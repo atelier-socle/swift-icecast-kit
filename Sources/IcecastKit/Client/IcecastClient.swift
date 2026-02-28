@@ -30,13 +30,14 @@ public actor IcecastClient {
     private var connection: (any TransportConnection)?
     private var negotiatedProtocol: ProtocolMode?
     private let connectionFactory: @Sendable () -> any TransportConnection
-    private let eventContinuation: AsyncStream<ConnectionEvent>.Continuation
-    private var _statistics = ConnectionStatistics()
     private var reconnectTask: Task<Void, Never>?
     private var pendingMetadata: ICYMetadata?
 
+    /// The connection monitor for advanced statistics access.
+    public let monitor: ConnectionMonitor
+
     /// Stream of connection events (connect, disconnect, reconnect, errors, metadata, stats).
-    public nonisolated let events: AsyncStream<ConnectionEvent>
+    public nonisolated var events: AsyncStream<ConnectionEvent> { monitor.events }
 
     /// Current connection state.
     public var state: ConnectionState { currentState }
@@ -46,14 +47,7 @@ public actor IcecastClient {
 
     /// Current connection statistics.
     public var statistics: ConnectionStatistics {
-        var stats = _statistics
-        if let since = stats.connectedSince {
-            stats.duration = Date().timeIntervalSince(since)
-            if stats.duration > 0 {
-                stats.averageBitrate = Double(stats.bytesSent) * 8.0 / stats.duration
-            }
-        }
-        return stats
+        get async { await monitor.statistics }
     }
 
     // MARK: - Initialization
@@ -73,9 +67,7 @@ public actor IcecastClient {
         self.credentials = credentials
         self.reconnectPolicy = reconnectPolicy
         self.connectionFactory = TransportConnectionFactory.makeConnection
-        let (stream, continuation) = AsyncStream<ConnectionEvent>.makeStream()
-        self.events = stream
-        self.eventContinuation = continuation
+        self.monitor = ConnectionMonitor()
     }
 
     /// Creates a new Icecast client with a custom connection factory.
@@ -95,9 +87,7 @@ public actor IcecastClient {
         self.credentials = credentials
         self.reconnectPolicy = reconnectPolicy
         self.connectionFactory = connectionFactory
-        let (stream, continuation) = AsyncStream<ConnectionEvent>.makeStream()
-        self.events = stream
-        self.eventContinuation = continuation
+        self.monitor = ConnectionMonitor()
     }
 
     // MARK: - Connection Lifecycle
@@ -129,7 +119,7 @@ public actor IcecastClient {
             let icecastError = mapToIcecastError(error)
             if currentState == .connecting {
                 currentState = .failed(icecastError)
-                eventContinuation.yield(.error(icecastError))
+                await monitor.emit(.error(icecastError))
             }
             throw icecastError
         }
@@ -158,8 +148,8 @@ public actor IcecastClient {
         }
         self.negotiatedProtocol = mode
         currentState = .connected
-        _statistics.connectedSince = Date()
-        emitConnectedEvents(port: port, mode: mode)
+        await monitor.markConnected()
+        await emitConnectedEvents(port: port, mode: mode)
     }
 
     /// Sends audio data to the server.
@@ -184,10 +174,9 @@ public actor IcecastClient {
 
         do {
             try await transport.send(data)
-            _statistics.bytesSent += UInt64(data.count)
-            _statistics.bytesTotal += UInt64(data.count)
+            await monitor.recordBytesSent(data.count)
         } catch {
-            _statistics.sendErrorCount += 1
+            await monitor.recordSendError()
             await handleConnectionLoss(error: error)
             throw mapToIcecastError(error)
         }
@@ -216,8 +205,8 @@ public actor IcecastClient {
             )
             do {
                 try await adminClient.updateMetadata(metadata, mountpoint: configuration.mountpoint)
-                _statistics.metadataUpdateCount += 1
-                eventContinuation.yield(.metadataUpdated(metadata, method: .adminAPI))
+                await monitor.recordMetadataUpdate()
+                await monitor.emit(.metadataUpdated(metadata, method: .adminAPI))
                 return
             } catch IcecastError.adminAPIUnavailable {
                 // Fall through to inline
@@ -225,8 +214,8 @@ public actor IcecastClient {
         }
 
         pendingMetadata = metadata
-        _statistics.metadataUpdateCount += 1
-        eventContinuation.yield(.metadataUpdated(metadata, method: .inline))
+        await monitor.recordMetadataUpdate()
+        await monitor.emit(.metadataUpdated(metadata, method: .inline))
     }
 
     /// Disconnects from the server.
@@ -245,13 +234,13 @@ public actor IcecastClient {
 
         negotiatedProtocol = nil
         pendingMetadata = nil
-        _statistics.connectedSince = nil
 
         let wasDisconnected = currentState == .disconnected
         currentState = .disconnected
+        await monitor.markDisconnected()
 
         if !wasDisconnected {
-            eventContinuation.yield(.disconnected(reason: .requested))
+            await monitor.emit(.disconnected(reason: .requested))
         }
     }
 
@@ -299,22 +288,22 @@ public actor IcecastClient {
             let icecastError = mapToIcecastError(error)
             if currentState == .authenticating {
                 currentState = .failed(icecastError)
-                eventContinuation.yield(.error(icecastError))
+                await monitor.emit(.error(icecastError))
             }
             throw icecastError
         }
     }
 
     /// Emits connected and protocol-negotiated events.
-    private func emitConnectedEvents(port: Int, mode: ProtocolMode) {
-        eventContinuation.yield(
+    private func emitConnectedEvents(port: Int, mode: ProtocolMode) async {
+        await monitor.emit(
             .connected(
                 host: configuration.host,
                 port: port,
                 mountpoint: configuration.mountpoint,
                 protocolName: protocolDescription(mode)
             ))
-        eventContinuation.yield(.protocolNegotiated(mode))
+        await monitor.emit(.protocolNegotiated(mode))
     }
 
     /// Handles a connection loss by entering reconnection or transitioning to failed.
@@ -329,13 +318,13 @@ public actor IcecastClient {
 
         if isNonRecoverableError(icecastError) {
             currentState = .failed(icecastError)
-            eventContinuation.yield(.disconnected(reason: disconnectReason(for: icecastError)))
+            await monitor.emit(.disconnected(reason: disconnectReason(for: icecastError)))
             return
         }
 
         guard reconnectPolicy.isEnabled else {
             currentState = .failed(icecastError)
-            eventContinuation.yield(.disconnected(reason: .networkError("\(error)")))
+            await monitor.emit(.disconnected(reason: .networkError("\(error)")))
             return
         }
 
@@ -360,7 +349,7 @@ public actor IcecastClient {
 
             let delay = reconnectPolicy.delay(forAttempt: attempt)
             currentState = .reconnecting(attempt: attempt, nextRetryIn: delay)
-            eventContinuation.yield(.reconnecting(attempt: attempt, delay: delay))
+            await monitor.emit(.reconnecting(attempt: attempt, delay: delay))
 
             do {
                 try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -372,7 +361,7 @@ public actor IcecastClient {
 
             do {
                 try await performReconnection()
-                _statistics.reconnectionCount += 1
+                await monitor.recordReconnection()
                 return
             } catch {
                 currentError = mapToIcecastError(error)
@@ -381,7 +370,7 @@ public actor IcecastClient {
         }
 
         currentState = .failed(currentError)
-        eventContinuation.yield(.disconnected(reason: .maxRetriesExceeded))
+        await monitor.emit(.disconnected(reason: .maxRetriesExceeded))
     }
 
     /// Performs a single reconnection attempt.
@@ -417,8 +406,8 @@ public actor IcecastClient {
         }
         self.negotiatedProtocol = mode
         currentState = .connected
-        _statistics.connectedSince = Date()
-        emitConnectedEvents(port: port, mode: mode)
+        await monitor.markConnected()
+        await emitConnectedEvents(port: port, mode: mode)
     }
 
     /// Maps a generic error to an ``IcecastError``.
