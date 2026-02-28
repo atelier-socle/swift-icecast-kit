@@ -79,8 +79,8 @@ public actor ConnectionMonitor {
 
     /// Record bytes sent through the connection.
     ///
-    /// Updates ``bytesSent``, ``bytesTotal``, recalculates ``currentBitrate``
-    /// and ``averageBitrate``.
+    /// Updates `bytesSent`, `bytesTotal`, recalculates `currentBitrate`
+    /// and `averageBitrate` in ``ConnectionStatistics``.
     ///
     /// - Parameter count: The number of bytes sent.
     public func recordBytesSent(_ count: Int) {
@@ -96,21 +96,21 @@ public actor ConnectionMonitor {
 
     /// Record a metadata update.
     ///
-    /// Increments ``metadataUpdateCount`` in statistics.
+    /// Increments `metadataUpdateCount` in ``ConnectionStatistics``.
     public func recordMetadataUpdate() {
         metadataUpdateCount += 1
     }
 
     /// Record a reconnection attempt.
     ///
-    /// Increments ``reconnectionCount`` in statistics.
+    /// Increments `reconnectionCount` in ``ConnectionStatistics``.
     public func recordReconnection() {
         reconnectionCount += 1
     }
 
     /// Record a send error.
     ///
-    /// Increments ``sendErrorCount`` in statistics.
+    /// Increments `sendErrorCount` in ``ConnectionStatistics``.
     public func recordSendError() {
         sendErrorCount += 1
     }
@@ -119,7 +119,7 @@ public actor ConnectionMonitor {
 
     /// Mark the connection as established.
     ///
-    /// Sets ``connectedSince`` to the current date and starts
+    /// Sets `connectedSince` to the current date and starts
     /// the periodic statistics emission timer (if configured).
     public func markConnected() {
         connectedSince = Date()
@@ -128,7 +128,7 @@ public actor ConnectionMonitor {
 
     /// Mark the connection as disconnected.
     ///
-    /// Clears ``connectedSince`` and stops the periodic statistics timer.
+    /// Clears `connectedSince` and stops the periodic statistics timer.
     public func markDisconnected() {
         connectedSince = nil
         stopPeriodicEmission()

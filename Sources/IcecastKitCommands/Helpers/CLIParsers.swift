@@ -19,7 +19,7 @@ public enum CLIParseError: Error, Sendable {
 /// `"shoutcast-v1"`, `"shoutcast-v2:N"`.
 ///
 /// - Parameter string: The protocol string to parse.
-/// - Returns: The corresponding ``ProtocolMode``.
+/// - Returns: The corresponding `ProtocolMode`.
 /// - Throws: ``CLIParseError/invalidProtocol(_:)`` if the string is invalid.
 public func parseProtocolMode(_ string: String) throws -> ProtocolMode {
     switch string.lowercased() {
@@ -48,7 +48,7 @@ public func parseProtocolMode(_ string: String) throws -> ProtocolMode {
 /// Accepts: `"mp3"`, `"aac"`, `"ogg-vorbis"`, `"ogg-opus"`.
 ///
 /// - Parameter string: The content type string to parse.
-/// - Returns: The corresponding ``AudioContentType``.
+/// - Returns: The corresponding `AudioContentType`.
 /// - Throws: ``CLIParseError/invalidContentType(_:)`` if the string is invalid.
 public func parseContentType(_ string: String) throws -> AudioContentType {
     switch string.lowercased() {

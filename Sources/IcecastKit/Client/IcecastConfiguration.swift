@@ -208,7 +208,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     ///
     /// Format: `scheme://username:password@host:port/mountpoint`
     ///
-    /// - Parameter url: The URL string to parse.
+    /// - Parameter urlString: The URL string to parse.
     /// - Returns: A tuple of the parsed configuration and extracted credentials.
     /// - Throws: ``IcecastError/credentialsRequired`` or ``IcecastError/invalidMountpoint(_:)``.
     public static func from(url urlString: String) throws -> (IcecastConfiguration, IcecastCredentials) {

@@ -4,7 +4,7 @@
 /// Factory for creating platform-appropriate transport connections.
 ///
 /// Returns ``NWTransportConnection`` on Apple platforms (using Network.framework)
-/// and ``POSIXTransportConnection`` on Linux (using POSIX sockets).
+/// and `POSIXTransportConnection` on Linux (using POSIX sockets).
 public enum TransportConnectionFactory {
 
     /// Creates a new transport connection appropriate for the current platform.
