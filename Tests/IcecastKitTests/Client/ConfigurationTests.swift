@@ -158,4 +158,87 @@ struct ConfigurationTests {
     func protocolModeShoutcastV2Same() {
         #expect(ProtocolMode.shoutcastV2(streamId: 1) == ProtocolMode.shoutcastV2(streamId: 1))
     }
+
+    // MARK: - ProtocolMode Codable
+
+    @Test("ProtocolMode auto Codable roundtrip")
+    func protocolModeAutoRoundtrip() throws {
+        let mode = ProtocolMode.auto
+        let data = try JSONEncoder().encode(mode)
+        let decoded = try JSONDecoder().decode(ProtocolMode.self, from: data)
+        #expect(decoded == mode)
+    }
+
+    @Test("ProtocolMode shoutcastV2 Codable roundtrip")
+    func protocolModeShoutcastV2Roundtrip() throws {
+        let mode = ProtocolMode.shoutcastV2(streamId: 3)
+        let data = try JSONEncoder().encode(mode)
+        let decoded = try JSONDecoder().decode(ProtocolMode.self, from: data)
+        #expect(decoded == mode)
+    }
+
+    @Test("ProtocolMode all cases Codable roundtrip")
+    func protocolModeAllCasesRoundtrip() throws {
+        let modes: [ProtocolMode] = [.auto, .icecastPUT, .icecastSOURCE, .shoutcastV1, .shoutcastV2(streamId: 5)]
+        for mode in modes {
+            let data = try JSONEncoder().encode(mode)
+            let decoded = try JSONDecoder().decode(ProtocolMode.self, from: data)
+            #expect(decoded == mode)
+        }
+    }
+
+    // MARK: - AudioContentType CaseIterable
+
+    @Test("AudioContentType has 4 cases via CaseIterable")
+    func audioContentTypeCaseIterable() {
+        #expect(AudioContentType.allCases.count == 4)
+        #expect(AudioContentType.allCases.contains(.mp3))
+        #expect(AudioContentType.allCases.contains(.aac))
+        #expect(AudioContentType.allCases.contains(.oggVorbis))
+        #expect(AudioContentType.allCases.contains(.oggOpus))
+    }
+
+    @Test("AudioContentType detect is case-insensitive")
+    func audioContentTypeDetectCaseInsensitive() {
+        #expect(AudioContentType.detect(from: "SONG.MP3") == .mp3)
+        #expect(AudioContentType.detect(from: "Song.Ogg") == .oggVorbis)
+        #expect(AudioContentType.detect(from: "TRACK.OPUS") == .oggOpus)
+        #expect(AudioContentType.detect(from: "file.AAC") == .aac)
+    }
+
+    // MARK: - StationInfo Codable
+
+    @Test("StationInfo Codable roundtrip")
+    func stationInfoCodableRoundtrip() throws {
+        let info = StationInfo(
+            name: "Test Radio",
+            description: "The best",
+            url: "https://test.com",
+            genre: "Rock;Pop",
+            isPublic: true,
+            bitrate: 128,
+            sampleRate: 44100,
+            channels: 2
+        )
+        let data = try JSONEncoder().encode(info)
+        let decoded = try JSONDecoder().decode(StationInfo.self, from: data)
+        #expect(decoded == info)
+    }
+
+    // MARK: - IcecastCredentials Codable
+
+    @Test("IcecastCredentials Codable roundtrip")
+    func credentialsCodableRoundtrip() throws {
+        let creds = IcecastCredentials(username: "source", password: "hackme")
+        let data = try JSONEncoder().encode(creds)
+        let decoded = try JSONDecoder().decode(IcecastCredentials.self, from: data)
+        #expect(decoded == creds)
+    }
+
+    @Test("IcecastCredentials shoutcastV2 has correct username format")
+    func credentialsShoutcastV2Format() {
+        let creds = IcecastCredentials.shoutcastV2(password: "hackme", streamId: 2)
+        #expect(creds.username == "sid=2")
+        #expect(creds.password == "hackme")
+    }
 }

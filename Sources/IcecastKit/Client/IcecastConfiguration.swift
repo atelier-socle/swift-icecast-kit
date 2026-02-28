@@ -6,7 +6,7 @@ import Foundation
 /// Represents an audio content type (MIME type) for streaming.
 ///
 /// Common audio formats supported by Icecast and SHOUTcast servers.
-public struct AudioContentType: RawRepresentable, Sendable, Hashable, Codable {
+public struct AudioContentType: RawRepresentable, Sendable, Hashable, Codable, CaseIterable {
 
     /// The MIME type string.
     public var rawValue: String
@@ -132,5 +132,172 @@ public struct StationInfo: Sendable, Hashable, Codable {
             parts.append("ice-bitrate=\(bitrate)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: ";")
+    }
+}
+
+/// Configuration for connecting to an Icecast/SHOUTcast server.
+///
+/// Holds all parameters needed to establish a connection and begin streaming,
+/// including server address, mountpoint, content type, and protocol variant.
+public struct IcecastConfiguration: Sendable, Hashable, Codable {
+
+    /// The server hostname.
+    public var host: String
+
+    /// The server port number.
+    public var port: Int
+
+    /// The mountpoint path (e.g., `"/live.mp3"`).
+    public var mountpoint: String
+
+    /// Whether to use TLS encryption.
+    public var useTLS: Bool
+
+    /// The audio content type.
+    public var contentType: AudioContentType
+
+    /// Station metadata for ice-* / icy-* headers.
+    public var stationInfo: StationInfo
+
+    /// The streaming protocol variant to use.
+    public var protocolMode: ProtocolMode
+
+    /// Optional admin credentials for metadata updates.
+    public var adminCredentials: IcecastCredentials?
+
+    /// The metadata interval in bytes.
+    public var metadataInterval: Int
+
+    /// Creates a new Icecast configuration.
+    ///
+    /// - Parameters:
+    ///   - host: The server hostname.
+    ///   - port: The server port. Defaults to `8000`.
+    ///   - mountpoint: The mountpoint path.
+    ///   - useTLS: Whether to use TLS. Defaults to `false`.
+    ///   - contentType: The audio content type. Defaults to `.mp3`.
+    ///   - stationInfo: Station metadata. Defaults to empty.
+    ///   - protocolMode: The protocol variant. Defaults to `.auto`.
+    ///   - adminCredentials: Optional admin credentials.
+    ///   - metadataInterval: Metadata interval in bytes. Defaults to `8192`.
+    public init(
+        host: String,
+        port: Int = 8000,
+        mountpoint: String,
+        useTLS: Bool = false,
+        contentType: AudioContentType = .mp3,
+        stationInfo: StationInfo = StationInfo(),
+        protocolMode: ProtocolMode = .auto,
+        adminCredentials: IcecastCredentials? = nil,
+        metadataInterval: Int = 8192
+    ) {
+        self.host = host
+        self.port = port
+        self.mountpoint = mountpoint
+        self.useTLS = useTLS
+        self.contentType = contentType
+        self.stationInfo = stationInfo
+        self.protocolMode = protocolMode
+        self.adminCredentials = adminCredentials
+        self.metadataInterval = metadataInterval
+    }
+
+    /// Creates a configuration and credentials from a URL string.
+    ///
+    /// Supported schemes: `icecast://`, `shoutcast://`, `http://`, `https://`
+    ///
+    /// Format: `scheme://username:password@host:port/mountpoint`
+    ///
+    /// - Parameter url: The URL string to parse.
+    /// - Returns: A tuple of the parsed configuration and extracted credentials.
+    /// - Throws: ``IcecastError/credentialsRequired`` or ``IcecastError/invalidMountpoint(_:)``.
+    public static func from(url urlString: String) throws -> (IcecastConfiguration, IcecastCredentials) {
+        let components = try validatedComponents(from: urlString)
+        guard let scheme = components.scheme?.lowercased(),
+            let host = components.host
+        else {
+            throw IcecastError.invalidMountpoint("Invalid URL: \(urlString)")
+        }
+        let isShoutcast = scheme == "shoutcast"
+
+        let mountpoint = components.path.isEmpty ? "/stream" : components.path
+        let protocolMode = isShoutcast ? shoutcastMode(from: components) : .auto
+
+        let password = try extractPassword(from: components, isShoutcast: isShoutcast)
+        let credentials = buildCredentials(
+            password: password, isShoutcast: isShoutcast,
+            protocolMode: protocolMode, components: components
+        )
+
+        let configuration = IcecastConfiguration(
+            host: host,
+            port: components.port ?? 8000,
+            mountpoint: mountpoint,
+            useTLS: scheme == "https",
+            contentType: AudioContentType.detect(from: mountpoint) ?? .mp3,
+            protocolMode: protocolMode
+        )
+
+        return (configuration, credentials)
+    }
+
+    // MARK: - URL Parsing Helpers
+
+    /// Validates and returns URL components from a string.
+    private static func validatedComponents(from urlString: String) throws -> URLComponents {
+        guard let components = URLComponents(string: urlString) else {
+            throw IcecastError.invalidMountpoint("Invalid URL: \(urlString)")
+        }
+        guard let scheme = components.scheme?.lowercased() else {
+            throw IcecastError.invalidMountpoint("Missing scheme in URL: \(urlString)")
+        }
+        guard ["icecast", "shoutcast", "http", "https"].contains(scheme) else {
+            throw IcecastError.invalidMountpoint("Unsupported scheme '\(scheme)' in URL: \(urlString)")
+        }
+        guard let host = components.host, !host.isEmpty else {
+            throw IcecastError.invalidMountpoint("Missing host in URL: \(urlString)")
+        }
+        return components
+    }
+
+    /// Determines the SHOUTcast protocol mode from query parameters.
+    private static func shoutcastMode(from components: URLComponents) -> ProtocolMode {
+        let queryItems = components.queryItems ?? []
+        if let streamIdItem = queryItems.first(where: { $0.name == "streamId" }),
+            let streamIdValue = streamIdItem.value,
+            let streamId = Int(streamIdValue)
+        {
+            return .shoutcastV2(streamId: streamId)
+        }
+        return .shoutcastV1
+    }
+
+    /// Extracts the password from URL components.
+    private static func extractPassword(from components: URLComponents, isShoutcast: Bool) throws -> String {
+        if isShoutcast {
+            if let pw = components.password, !pw.isEmpty { return pw }
+            if let user = components.user, !user.isEmpty { return user }
+            throw IcecastError.credentialsRequired
+        }
+        guard let pw = components.password, !pw.isEmpty else {
+            throw IcecastError.credentialsRequired
+        }
+        return pw
+    }
+
+    /// Builds credentials from parsed URL components.
+    private static func buildCredentials(
+        password: String, isShoutcast: Bool,
+        protocolMode: ProtocolMode, components: URLComponents
+    ) -> IcecastCredentials {
+        if isShoutcast {
+            if case .shoutcastV2(let streamId) = protocolMode {
+                return .shoutcastV2(password: password, streamId: streamId)
+            }
+            return .shoutcast(password: password)
+        }
+        let rawUsername = components.user ?? ""
+        let username = rawUsername.isEmpty ? "source" : rawUsername
+        return IcecastCredentials(username: username, password: password)
     }
 }
