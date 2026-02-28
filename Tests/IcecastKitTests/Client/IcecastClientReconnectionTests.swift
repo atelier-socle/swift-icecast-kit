@@ -186,6 +186,72 @@ struct IcecastClientReconnectionTests {
         #expect(stats.sendErrorCount == 1)
     }
 
+    // MARK: - Non-Recoverable Error Handling
+
+    @Test("Auth failure during send skips reconnection")
+    func authFailureDuringSendSkipsReconnection() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Self.putOKResponse)
+        let client = IcecastClient(
+            configuration: Self.testConfig,
+            credentials: Self.testCredentials,
+            reconnectPolicy: ReconnectPolicy(maxRetries: 5, initialDelay: 0.05),
+            connectionFactory: { mock }
+        )
+        try await client.connect()
+        await mock.setSendError(
+            .authenticationFailed(statusCode: 401, message: "Token expired"))
+        do { try await client.send(Data("audio".utf8)) } catch {}
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let state = await client.state
+        if case .failed = state {
+        } else {
+            Issue.record("Expected failed state (no reconnection), got \(state)")
+        }
+    }
+
+    @Test("Mountpoint in use during send skips reconnection")
+    func mountpointInUseDuringSendSkipsReconnection() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Self.putOKResponse)
+        let client = IcecastClient(
+            configuration: Self.testConfig,
+            credentials: Self.testCredentials,
+            reconnectPolicy: ReconnectPolicy(maxRetries: 5, initialDelay: 0.05),
+            connectionFactory: { mock }
+        )
+        try await client.connect()
+        await mock.setSendError(.mountpointInUse("/live.mp3"))
+        do { try await client.send(Data("audio".utf8)) } catch {}
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let state = await client.state
+        if case .failed = state {
+        } else {
+            Issue.record("Expected failed state (no reconnection), got \(state)")
+        }
+    }
+
+    @Test("Content type rejected during send skips reconnection")
+    func contentTypeRejectedDuringSendSkipsReconnection() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Self.putOKResponse)
+        let client = IcecastClient(
+            configuration: Self.testConfig,
+            credentials: Self.testCredentials,
+            reconnectPolicy: ReconnectPolicy(maxRetries: 5, initialDelay: 0.05),
+            connectionFactory: { mock }
+        )
+        try await client.connect()
+        await mock.setSendError(.contentTypeNotSupported("audio/flac"))
+        do { try await client.send(Data("audio".utf8)) } catch {}
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let state = await client.state
+        if case .failed = state {
+        } else {
+            Issue.record("Expected failed state (no reconnection), got \(state)")
+        }
+    }
+
     // MARK: - SHOUTcast Port Adjustment
 
     @Test("SHOUTcast v1 connects to port plus one")

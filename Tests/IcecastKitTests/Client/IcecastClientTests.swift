@@ -287,4 +287,60 @@ struct IcecastClientLifecycleTests {
         let stats = await client.statistics
         #expect(stats.bytesSent > 0)
     }
+
+    // MARK: - Admin Metadata Path
+
+    @Test("updateMetadata with admin credentials uses admin API")
+    func updateMetadataWithAdminCredentials() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Self.putOKResponse)
+        // Admin API mock: responds 200 OK
+        await mock.enqueueResponse(Data("HTTP/1.1 200 OK\r\n\r\n".utf8))
+        let adminConfig = IcecastConfiguration(
+            host: "radio.example.com",
+            port: 8000,
+            mountpoint: "/live.mp3",
+            adminCredentials: IcecastCredentials(username: "admin", password: "adminpass")
+        )
+        let client = Self.makeClient(configuration: adminConfig, mock: mock)
+        let collector = EventCollector()
+        let eventTask = Self.collectEvents(from: client, into: collector)
+        try await client.connect()
+        try await client.updateMetadata(ICYMetadata(streamTitle: "Admin Song"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        eventTask.cancel()
+        let events = await collector.events
+        let adminUpdate = events.contains {
+            if case .metadataUpdated(_, method: .adminAPI) = $0 { return true }
+            return false
+        }
+        #expect(adminUpdate)
+    }
+
+    @Test("updateMetadata falls back to inline when admin API unavailable")
+    func updateMetadataFallsBackToInline() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Self.putOKResponse)
+        // Admin API mock: responds 404 → adminAPIUnavailable
+        await mock.enqueueResponse(Data("HTTP/1.1 404 Not Found\r\n\r\n".utf8))
+        let adminConfig = IcecastConfiguration(
+            host: "radio.example.com",
+            port: 8000,
+            mountpoint: "/live.mp3",
+            adminCredentials: IcecastCredentials(username: "admin", password: "adminpass")
+        )
+        let client = Self.makeClient(configuration: adminConfig, mock: mock)
+        let collector = EventCollector()
+        let eventTask = Self.collectEvents(from: client, into: collector)
+        try await client.connect()
+        try await client.updateMetadata(ICYMetadata(streamTitle: "Inline Song"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        eventTask.cancel()
+        let events = await collector.events
+        let inlineUpdate = events.contains {
+            if case .metadataUpdated(_, method: .inline) = $0 { return true }
+            return false
+        }
+        #expect(inlineUpdate)
+    }
 }
