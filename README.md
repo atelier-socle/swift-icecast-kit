@@ -7,7 +7,7 @@
 ![Platforms](https://img.shields.io/badge/Platforms-macOS%20|%20iOS%20|%20tvOS%20|%20watchOS%20|%20visionOS%20|%20Linux-lightgray)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-<!-- ![swift-icecast-kit](./assets/banner.png) -->
+![swift-icecast-kit](./assets/banner.png)
 
 Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. Zero dependencies on the core target. Cross-platform TCP transport with Network.framework on Apple platforms and POSIX sockets on Linux. Strict `Sendable` conformance throughout. Part of the [Atelier Socle](https://www.atelier-socle.com) streaming ecosystem.
 
