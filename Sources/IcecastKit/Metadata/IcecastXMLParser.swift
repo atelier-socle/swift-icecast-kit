@@ -3,6 +3,10 @@
 
 import Foundation
 
+#if canImport(FoundationXML)
+    import FoundationXML
+#endif
+
 /// Parses Icecast admin API XML responses into structured stats models.
 ///
 /// Uses Foundation's `XMLParser` (SAX-based) to extract server and

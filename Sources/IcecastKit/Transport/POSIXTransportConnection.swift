@@ -44,7 +44,11 @@
 
             var hints = addrinfo()
             hints.ai_family = AF_UNSPEC
-            hints.ai_socktype = Int32(SOCK_STREAM)
+            #if canImport(Glibc)
+                hints.ai_socktype = Int32(SOCK_STREAM.rawValue)
+            #else
+                hints.ai_socktype = Int32(SOCK_STREAM)
+            #endif
             hints.ai_protocol = Int32(IPPROTO_TCP)
 
             var result: UnsafeMutablePointer<addrinfo>?
