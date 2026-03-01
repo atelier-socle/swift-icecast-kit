@@ -13,3 +13,5 @@ coverage:
 ignore:
   - "Sources/IcecastKit/Transport/NWTransportConnection.swift"
   - "Sources/IcecastKit/Transport/POSIXTransportConnection.swift"
+  - "Sources/IcecastKitCommands/**"
+  - "Sources/IcecastKitCLI/**"
