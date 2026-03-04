@@ -65,6 +65,9 @@ public actor MultiIcecastClient {
     }
 
     deinit {
+        for entry in entries.values {
+            entry.eventRelayTask?.cancel()
+        }
         eventContinuation.finish()
     }
 

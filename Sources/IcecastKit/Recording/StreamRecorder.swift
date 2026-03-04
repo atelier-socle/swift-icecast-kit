@@ -74,6 +74,10 @@ public actor StreamRecorder {
         self.fileFactory = fileFactory
     }
 
+    deinit {
+        flushTask?.cancel()
+    }
+
     // MARK: - Lifecycle
 
     /// Starts recording. Creates the output directory if needed.

@@ -95,6 +95,12 @@ public actor IcecastRelay {
         self.eventContinuation = eventCont
     }
 
+    deinit {
+        readTask?.cancel()
+        audioContinuation?.finish()
+        eventContinuation?.finish()
+    }
+
     // MARK: - Connection
 
     /// Connects to the source stream and starts receiving audio.

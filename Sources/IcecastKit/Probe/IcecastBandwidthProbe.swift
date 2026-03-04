@@ -176,10 +176,9 @@ public actor IcecastBandwidthProbe {
                 let latencyMs = writeDuration * 1000.0
 
                 measurement.writeLatencies.append(latencyMs)
-                if writeDuration > 0 {
-                    let bps = Double(chunkSize * 8) / writeDuration
-                    measurement.achievedBps.append(bps)
-                }
+                let effectiveDuration = max(writeDuration, 1e-9)
+                let bps = Double(chunkSize * 8) / effectiveDuration
+                measurement.achievedBps.append(bps)
 
                 bytesSent += chunkSize
             }
