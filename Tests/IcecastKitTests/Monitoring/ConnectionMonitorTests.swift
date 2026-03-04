@@ -337,11 +337,13 @@ struct ConnectionMonitorPeriodicTests {
         await monitor.markConnected()
         try await Task.sleep(nanoseconds: 120_000_000)
         await monitor.markDisconnected()
+        // Allow any in-flight emission to drain before sampling.
+        try await Task.sleep(nanoseconds: 100_000_000)
         let countBefore = await collector.events.count
         try await Task.sleep(nanoseconds: 200_000_000)
         task.cancel()
         let countAfter = await collector.events.count
-        #expect(countAfter - countBefore <= 1)
+        #expect(countAfter == countBefore)
     }
 
     @Test("statisticsInterval nil disables periodic emission")

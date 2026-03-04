@@ -18,8 +18,8 @@ struct IcecastKitCommandTests {
         #expect(IcecastKitCommand.configuration.version == "0.1.0")
     }
 
-    @Test("Root command has four subcommands")
+    @Test("Root command has five subcommands")
     func rootCommandSubcommands() {
-        #expect(IcecastKitCommand.configuration.subcommands.count == 4)
+        #expect(IcecastKitCommand.configuration.subcommands.count == 5)
     }
 }

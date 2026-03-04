@@ -17,7 +17,8 @@ public struct IcecastKitCommand: AsyncParsableCommand {
             StreamCommand.self,
             TestConnectionCommand.self,
             InfoCommand.self,
-            ProbeCommand.self
+            ProbeCommand.self,
+            RelayCommand.self
         ]
     )
 

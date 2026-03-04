@@ -324,4 +324,10 @@ extension MockTransportConnection {
     func setReceiveError(_ error: IcecastError?) {
         self.receiveError = error
     }
+
+    func setOnConnect(
+        _ handler: (@Sendable (MockTransportConnection) async -> Void)?
+    ) {
+        self.onConnect = handler
+    }
 }

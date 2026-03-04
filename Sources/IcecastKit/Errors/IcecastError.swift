@@ -129,6 +129,17 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
     /// The recording output directory is not writable or cannot be created.
     case recordingDirectoryNotWritable(path: String)
 
+    // MARK: - Relay
+
+    /// Relay connection to a source stream failed.
+    case relayConnectionFailed(url: String, reason: String)
+
+    /// The source stream ended (server closed connection).
+    case relayStreamEnded
+
+    /// ICY metadata parsing failed during relay.
+    case relayMetadataParsingFailed
+
     // MARK: - Data
 
     /// Sending audio data failed.
@@ -226,6 +237,14 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
             return "File rotation failed: \(reason)"
         case .recordingDirectoryNotWritable(let path):
             return "Recording directory not writable: \(path)"
+
+        // Relay
+        case .relayConnectionFailed(let url, let reason):
+            return "Relay connection to \(url) failed: \(reason)"
+        case .relayStreamEnded:
+            return "Relay source stream ended"
+        case .relayMetadataParsingFailed:
+            return "Relay ICY metadata parsing failed"
 
         // Data
         case .sendFailed(let reason):

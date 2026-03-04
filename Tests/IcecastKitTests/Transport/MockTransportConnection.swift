@@ -25,6 +25,9 @@ actor MockTransportConnection: TransportConnection {
     /// If set, `receive()` will throw this error.
     var receiveError: IcecastError?
 
+    /// Called after each successful `connect()`. Use to re-enqueue responses.
+    var onConnect: (@Sendable (MockTransportConnection) async -> Void)?
+
     /// Tracks the current connection state.
     private(set) var connected: Bool = false
 
@@ -81,6 +84,10 @@ actor MockTransportConnection: TransportConnection {
         }
 
         connected = true
+
+        if let handler = onConnect {
+            await handler(self)
+        }
     }
 
     func send(_ data: Data) async throws {
