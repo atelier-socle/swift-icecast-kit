@@ -168,6 +168,14 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     /// The metadata interval in bytes.
     public var metadataInterval: Int
 
+    /// Adaptive bitrate policy.
+    ///
+    /// When set, the client instantiates a ``NetworkConditionMonitor``
+    /// that measures network conditions and emits ``BitrateRecommendation``
+    /// events via the ``ConnectionEvent/bitrateRecommendation(_:)`` event.
+    /// Set to `nil` to disable adaptive bitrate (default).
+    public var adaptiveBitrate: AdaptiveBitratePolicy?
+
     /// Creates a new Icecast configuration.
     ///
     /// - Parameters:
@@ -180,6 +188,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     ///   - protocolMode: The protocol variant. Defaults to `.auto`.
     ///   - adminCredentials: Optional admin credentials.
     ///   - metadataInterval: Metadata interval in bytes. Defaults to `8192`.
+    ///   - adaptiveBitrate: Adaptive bitrate policy. Defaults to `nil` (disabled).
     public init(
         host: String,
         port: Int = 8000,
@@ -189,7 +198,8 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         stationInfo: StationInfo = StationInfo(),
         protocolMode: ProtocolMode = .auto,
         adminCredentials: IcecastCredentials? = nil,
-        metadataInterval: Int = 8192
+        metadataInterval: Int = 8192,
+        adaptiveBitrate: AdaptiveBitratePolicy? = nil
     ) {
         self.host = host
         self.port = port
@@ -200,6 +210,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         self.protocolMode = protocolMode
         self.adminCredentials = adminCredentials
         self.metadataInterval = metadataInterval
+        self.adaptiveBitrate = adaptiveBitrate
     }
 
     /// Creates a configuration and credentials from a URL string.

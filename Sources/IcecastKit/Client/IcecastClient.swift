@@ -32,6 +32,8 @@ public actor IcecastClient {
     private let connectionFactory: @Sendable () -> any TransportConnection
     private var reconnectTask: Task<Void, Never>?
     private var pendingMetadata: ICYMetadata?
+    private var networkConditionMonitor: NetworkConditionMonitor?
+    private var abrRelayTask: Task<Void, Never>?
 
     /// The connection monitor for advanced statistics access.
     public let monitor: ConnectionMonitor
@@ -150,6 +152,7 @@ public actor IcecastClient {
         currentState = .connected
         await monitor.markConnected()
         await emitConnectedEvents(port: port, mode: mode)
+        startABRIfConfigured()
     }
 
     /// Sends audio data to the server.
@@ -172,11 +175,17 @@ public actor IcecastClient {
             currentState = .streaming
         }
 
+        let startTime = Date()
         do {
             try await transport.send(data)
             await monitor.recordBytesSent(data.count)
+            let writeDuration = Date().timeIntervalSince(startTime)
+            await networkConditionMonitor?.recordWrite(
+                duration: writeDuration, bytesWritten: data.count
+            )
         } catch {
             await monitor.recordSendError()
+            await networkConditionMonitor?.recordWriteFailure()
             await handleConnectionLoss(error: error)
             throw mapToIcecastError(error)
         }
@@ -226,6 +235,7 @@ public actor IcecastClient {
     public func disconnect() async {
         reconnectTask?.cancel()
         reconnectTask = nil
+        stopABR()
 
         if let transport = connection {
             await transport.close()
@@ -451,5 +461,37 @@ public actor IcecastClient {
         case .shoutcastV1: return "SHOUTcast v1"
         case .shoutcastV2: return "SHOUTcast v2"
         }
+    }
+
+    // MARK: - Adaptive Bitrate
+
+    /// Starts the ABR monitor and relay task if configured.
+    private func startABRIfConfigured() {
+        guard let policy = configuration.adaptiveBitrate else { return }
+
+        let initialBitrate = configuration.stationInfo.bitrate.map { $0 * 1000 } ?? 128_000
+        let abrMonitor = NetworkConditionMonitor(
+            policy: policy, currentBitrate: initialBitrate
+        )
+        self.networkConditionMonitor = abrMonitor
+
+        Task { await abrMonitor.start() }
+
+        abrRelayTask = Task { [weak self] in
+            for await recommendation in abrMonitor.recommendations {
+                guard let self, !Task.isCancelled else { return }
+                await self.monitor.emit(.bitrateRecommendation(recommendation))
+            }
+        }
+    }
+
+    /// Stops the ABR monitor and relay task.
+    private func stopABR() {
+        abrRelayTask?.cancel()
+        abrRelayTask = nil
+        if let abrMonitor = networkConditionMonitor {
+            Task { await abrMonitor.stop() }
+        }
+        networkConditionMonitor = nil
     }
 }

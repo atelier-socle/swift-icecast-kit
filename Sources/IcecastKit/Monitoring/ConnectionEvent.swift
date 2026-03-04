@@ -26,6 +26,9 @@ public enum ConnectionEvent: Sendable {
 
     /// Protocol was successfully negotiated.
     case protocolNegotiated(ProtocolMode)
+
+    /// Adaptive bitrate recommendation based on network conditions.
+    case bitrateRecommendation(BitrateRecommendation)
 }
 
 /// The method used to update metadata.
