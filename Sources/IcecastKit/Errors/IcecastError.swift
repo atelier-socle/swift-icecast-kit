@@ -110,6 +110,14 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
     /// Some destinations failed during a multi-destination send.
     case partialSendFailure(successCount: Int, failureCount: Int)
 
+    // MARK: - Probe
+
+    /// Bandwidth probe failed.
+    case probeFailed(reason: String)
+
+    /// Bandwidth probe timed out.
+    case probeTimeout
+
     // MARK: - Data
 
     /// Sending audio data failed.
@@ -193,6 +201,12 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
             return "All destinations failed to connect"
         case .partialSendFailure(let successCount, let failureCount):
             return "Partial send failure: \(successCount) succeeded, \(failureCount) failed"
+
+        // Probe
+        case .probeFailed(let reason):
+            return "Bandwidth probe failed: \(reason)"
+        case .probeTimeout:
+            return "Bandwidth probe timed out"
 
         // Data
         case .sendFailed(let reason):

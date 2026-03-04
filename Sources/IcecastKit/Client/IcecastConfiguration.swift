@@ -330,4 +330,62 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         let username = rawUsername.isEmpty ? "source" : rawUsername
         return IcecastCredentials(username: username, password: password)
     }
+
+    // MARK: - Auto-Configuration
+
+    /// Creates a configuration with bitrate automatically calibrated via bandwidth probe.
+    ///
+    /// Runs a bandwidth probe before returning, then selects the optimal bitrate
+    /// for the given target quality. The resulting configuration has its
+    /// ``stationInfo`` bitrate set to the recommended value.
+    ///
+    /// - Parameters:
+    ///   - host: Server hostname.
+    ///   - port: Server port. Defaults to `8000`.
+    ///   - mountpoint: Mountpoint for streaming.
+    ///   - credentials: Source credentials for authentication.
+    ///   - contentType: Audio content type. Defaults to `.mp3`.
+    ///   - targetQuality: Quality target for bitrate selection. Defaults to `.balanced`.
+    ///   - probeMountpoint: Mountpoint for the probe. Defaults to `mountpoint + "/probe"`.
+    ///   - probeDuration: Probe duration in seconds. Defaults to `5.0`.
+    /// - Returns: A configured ``IcecastConfiguration`` with calibrated bitrate.
+    /// - Throws: ``IcecastError/probeFailed(reason:)`` or ``IcecastError/probeTimeout``.
+    public static func autoConfigured(
+        host: String,
+        port: Int = 8000,
+        mountpoint: String,
+        credentials: IcecastCredentials,
+        contentType: AudioContentType = .mp3,
+        targetQuality: ProbeTargetQuality = .balanced,
+        probeMountpoint: String? = nil,
+        probeDuration: TimeInterval = 5.0
+    ) async throws -> IcecastConfiguration {
+        let actualProbeMountpoint = probeMountpoint ?? (mountpoint + "/probe")
+        let probe = IcecastBandwidthProbe()
+        let result = try await probe.measure(
+            host: host,
+            port: port,
+            mountpoint: actualProbeMountpoint,
+            credentials: credentials,
+            contentType: contentType,
+            duration: probeDuration
+        )
+
+        let targetBandwidth = result.uploadBandwidth * targetQuality.utilizationFactor
+        let step = AudioQualityStep.closestStep(
+            for: Int(targetBandwidth), contentType: contentType
+        )
+        let bitrate = step?.bitrate ?? result.recommendedBitrate
+        let bitrateKbps = bitrate / 1000
+
+        return IcecastConfiguration(
+            host: host,
+            port: port,
+            mountpoint: mountpoint,
+            contentType: contentType,
+            stationInfo: StationInfo(bitrate: bitrateKbps),
+            credentials: credentials,
+            reconnectPolicy: .default
+        )
+    }
 }
