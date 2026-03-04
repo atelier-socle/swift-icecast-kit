@@ -286,24 +286,20 @@ struct ConnectionMonitorEventTests {
 @Suite("ConnectionMonitor — Periodic Statistics")
 struct ConnectionMonitorPeriodicTests {
 
-    @Test("Periodic statistics events emitted while connected")
-    func periodicStatsEmittedWhileConnected() async throws {
+    @Test(
+        "Periodic statistics events emitted while connected",
+        .timeLimit(.minutes(1)))
+    func periodicStatsEmittedWhileConnected() async {
         let monitor = ConnectionMonitor(statisticsInterval: 0.05)
-        let collector = MonitorEventCollector()
-        let task = Task {
+        await confirmation("periodic statistics event emitted") { confirm in
+            await monitor.markConnected()
             for await event in monitor.events {
-                await collector.append(event)
+                if case .statistics = event {
+                    confirm()
+                    return
+                }
             }
         }
-        await monitor.markConnected()
-        try await Task.sleep(nanoseconds: 200_000_000)
-        task.cancel()
-        let events = await collector.events
-        let statsEvents = events.filter {
-            if case .statistics = $0 { return true }
-            return false
-        }
-        #expect(statsEvents.count >= 1)
     }
 
     @Test("No periodic events when disconnected")
@@ -366,29 +362,23 @@ struct ConnectionMonitorPeriodicTests {
         #expect(statsEvents.isEmpty)
     }
 
-    @Test("Periodic events contain accurate current statistics")
-    func periodicEventsContainAccurateStats() async throws {
+    @Test(
+        "Periodic events contain accurate current statistics",
+        .timeLimit(.minutes(1)))
+    func periodicEventsContainAccurateStats() async {
         let monitor = ConnectionMonitor(statisticsInterval: 0.05)
-        let collector = MonitorEventCollector()
-        let task = Task {
-            for await event in monitor.events {
-                await collector.append(event)
-            }
-        }
         await monitor.markConnected()
         await monitor.recordBytesSent(1000)
         await monitor.recordMetadataUpdate()
-        try await Task.sleep(nanoseconds: 200_000_000)
-        task.cancel()
-        let events = await collector.events
-        let statsEvents = events.compactMap { event -> ConnectionStatistics? in
-            if case .statistics(let stats) = event { return stats }
-            return nil
-        }
-        #expect(!statsEvents.isEmpty)
-        if let stats = statsEvents.first {
-            #expect(stats.bytesSent == 1000)
-            #expect(stats.metadataUpdateCount == 1)
+        await confirmation("periodic stats event received") { confirm in
+            for await event in monitor.events {
+                if case .statistics(let stats) = event {
+                    #expect(stats.bytesSent == 1000)
+                    #expect(stats.metadataUpdateCount == 1)
+                    confirm()
+                    return
+                }
+            }
         }
     }
 }
