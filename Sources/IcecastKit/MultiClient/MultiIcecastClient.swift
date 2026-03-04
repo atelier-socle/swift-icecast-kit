@@ -383,6 +383,70 @@ public actor MultiIcecastClient {
         eventStream
     }
 
+    /// Quality snapshot per destination label.
+    ///
+    /// Only includes destinations that are currently connected.
+    /// Returns an empty dictionary if no destinations are connected.
+    public var connectionQualities: [String: ConnectionQuality] {
+        get async {
+            var result: [String: ConnectionQuality] = [:]
+            for entry in entries.values {
+                if let quality = await entry.client.connectionQuality {
+                    result[entry.label] = quality
+                }
+            }
+            return result
+        }
+    }
+
+    /// Aggregated quality across all connected destinations.
+    ///
+    /// Averages per-metric scores across all connected destinations,
+    /// then computes a weighted composite score. Returns `nil` if
+    /// no destinations are connected.
+    public var aggregatedQuality: ConnectionQuality? {
+        get async {
+            let qualities = await connectionQualities
+            guard !qualities.isEmpty else { return nil }
+            let count = Double(qualities.count)
+
+            let avgWl =
+                qualities.values.map(\.writeLatencyScore).reduce(0, +) / count
+            let avgSt =
+                qualities.values.map(\.stabilityScore).reduce(0, +) / count
+            let avgTp =
+                qualities.values.map(\.throughputScore).reduce(0, +) / count
+            let avgSs =
+                qualities.values.map(\.sendSuccessScore).reduce(0, +) / count
+            let avgRc =
+                qualities.values.map(\.reconnectionScore).reduce(0, +) / count
+
+            let score =
+                avgWl * 0.30
+                + avgSt * 0.25
+                + avgTp * 0.20
+                + avgSs * 0.15
+                + avgRc * 0.10
+            let grade = QualityGrade(score: score)
+
+            let partial = ConnectionQuality(
+                score: score, grade: grade,
+                writeLatencyScore: avgWl, stabilityScore: avgSt,
+                throughputScore: avgTp, sendSuccessScore: avgSs,
+                reconnectionScore: avgRc, recommendation: nil
+            )
+            let engine = QualityRecommendationEngine()
+            let recommendation = engine.recommendation(for: partial)
+
+            return ConnectionQuality(
+                score: score, grade: grade,
+                writeLatencyScore: avgWl, stabilityScore: avgSt,
+                throughputScore: avgTp, sendSuccessScore: avgSs,
+                reconnectionScore: avgRc, recommendation: recommendation
+            )
+        }
+    }
+
     /// Statistics snapshot aggregating all destinations.
     public var statistics: MultiIcecastStatistics {
         get async {
@@ -470,7 +534,8 @@ public actor MultiIcecastClient {
                 case .metadataUpdated:
                     continuation.yield(.metadataUpdated(label: label))
                 case .error, .statistics, .protocolNegotiated,
-                    .bitrateRecommendation:
+                    .bitrateRecommendation, .qualityChanged,
+                    .qualityWarning:
                     break
                 }
             }

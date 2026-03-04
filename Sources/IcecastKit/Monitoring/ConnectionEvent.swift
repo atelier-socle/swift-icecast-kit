@@ -29,6 +29,12 @@ public enum ConnectionEvent: Sendable {
 
     /// Adaptive bitrate recommendation based on network conditions.
     case bitrateRecommendation(BitrateRecommendation)
+
+    /// Connection quality snapshot updated.
+    case qualityChanged(ConnectionQuality)
+
+    /// Quality warning when grade transitions to `.poor` or `.critical`.
+    case qualityWarning(String)
 }
 
 /// The method used to update metadata.

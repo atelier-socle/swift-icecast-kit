@@ -33,6 +33,15 @@ public struct ConnectionStatistics: Sendable, Hashable {
     /// Number of send errors encountered.
     public var sendErrorCount: Int
 
+    /// Average write latency in milliseconds.
+    public var averageWriteLatency: Double
+
+    /// Variance of write latency in milliseconds squared.
+    public var writeLatencyVariance: Double
+
+    /// Total number of send attempts (successful + failed).
+    public var totalSendCount: Int
+
     /// Creates a connection statistics snapshot with the given values.
     ///
     /// - Parameters:
@@ -45,6 +54,9 @@ public struct ConnectionStatistics: Sendable, Hashable {
     ///   - reconnectionCount: Reconnection count. Defaults to `0`.
     ///   - connectedSince: Connection start date. Defaults to `nil`.
     ///   - sendErrorCount: Send error count. Defaults to `0`.
+    ///   - averageWriteLatency: Average write latency in ms. Defaults to `0`.
+    ///   - writeLatencyVariance: Write latency variance in ms². Defaults to `0`.
+    ///   - totalSendCount: Total send attempts. Defaults to `0`.
     public init(
         bytesSent: UInt64 = 0,
         bytesTotal: UInt64 = 0,
@@ -54,7 +66,10 @@ public struct ConnectionStatistics: Sendable, Hashable {
         metadataUpdateCount: Int = 0,
         reconnectionCount: Int = 0,
         connectedSince: Date? = nil,
-        sendErrorCount: Int = 0
+        sendErrorCount: Int = 0,
+        averageWriteLatency: Double = 0,
+        writeLatencyVariance: Double = 0,
+        totalSendCount: Int = 0
     ) {
         self.bytesSent = bytesSent
         self.bytesTotal = bytesTotal
@@ -65,5 +80,8 @@ public struct ConnectionStatistics: Sendable, Hashable {
         self.reconnectionCount = reconnectionCount
         self.connectedSince = connectedSince
         self.sendErrorCount = sendErrorCount
+        self.averageWriteLatency = averageWriteLatency
+        self.writeLatencyVariance = writeLatencyVariance
+        self.totalSendCount = totalSendCount
     }
 }

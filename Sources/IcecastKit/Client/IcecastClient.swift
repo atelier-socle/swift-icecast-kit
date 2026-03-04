@@ -52,6 +52,17 @@ public actor IcecastClient {
         get async { await monitor.statistics }
     }
 
+    /// Current connection quality snapshot computed from latest statistics.
+    ///
+    /// Returns `nil` if not connected or no statistics are available yet.
+    public var connectionQuality: ConnectionQuality? {
+        get async {
+            guard isConnected else { return nil }
+            let stats = await monitor.statistics
+            return ConnectionQuality.from(statistics: stats)
+        }
+    }
+
     // MARK: - Initialization
 
     /// Creates a new Icecast client.
@@ -178,8 +189,9 @@ public actor IcecastClient {
         let startTime = Date()
         do {
             try await transport.send(data)
-            await monitor.recordBytesSent(data.count)
             let writeDuration = Date().timeIntervalSince(startTime)
+            await monitor.recordBytesSent(data.count)
+            await monitor.recordSendLatency(writeDuration * 1000.0)
             await networkConditionMonitor?.recordWrite(
                 duration: writeDuration, bytesWritten: data.count
             )

@@ -26,6 +26,10 @@ public actor ConnectionMonitor {
     private var periodicTask: Task<Void, Never>?
     private var rollingWindow: [(timestamp: Date, bytes: Int)] = []
     private let windowDuration: TimeInterval = 5.0
+    private var successSendCount: Int = 0
+    private var latencyMean: Double = 0
+    private var latencyM2: Double = 0
+    private var previousGrade: QualityGrade?
 
     /// Stream of all connection events.
     ///
@@ -53,6 +57,11 @@ public actor ConnectionMonitor {
         }
 
         stats.currentBitrate = computeCurrentBitrate()
+        stats.averageWriteLatency = latencyMean
+        stats.writeLatencyVariance =
+            successSendCount > 1
+            ? latencyM2 / Double(successSendCount) : 0
+        stats.totalSendCount = successSendCount + sendErrorCount
         return stats
     }
 
@@ -115,6 +124,20 @@ public actor ConnectionMonitor {
         sendErrorCount += 1
     }
 
+    /// Record write latency for a successful send.
+    ///
+    /// Uses Welford's online algorithm for incremental mean/variance
+    /// computation without storing individual latency values.
+    ///
+    /// - Parameter latencyMs: The write latency in milliseconds.
+    public func recordSendLatency(_ latencyMs: Double) {
+        successSendCount += 1
+        let delta = latencyMs - latencyMean
+        latencyMean += delta / Double(successSendCount)
+        let delta2 = latencyMs - latencyMean
+        latencyM2 += delta * delta2
+    }
+
     // MARK: - Connection Lifecycle
 
     /// Mark the connection as established.
@@ -154,6 +177,10 @@ public actor ConnectionMonitor {
         sendErrorCount = 0
         connectedSince = nil
         rollingWindow.removeAll()
+        successSendCount = 0
+        latencyMean = 0
+        latencyM2 = 0
+        previousGrade = nil
         stopPeriodicEmission()
     }
 
@@ -192,8 +219,28 @@ public actor ConnectionMonitor {
                 guard let self else { return }
                 let stats = await self.statistics
                 await self.emit(.statistics(stats))
+                await self.emitQualityEvents(from: stats)
             }
         }
+    }
+
+    /// Computes quality from statistics and emits quality events.
+    private func emitQualityEvents(from statistics: ConnectionStatistics) {
+        let quality = ConnectionQuality.from(statistics: statistics)
+        emit(.qualityChanged(quality))
+
+        let isWarningGrade =
+            quality.grade == .poor || quality.grade == .critical
+        let gradeChanged =
+            previousGrade == nil || previousGrade != quality.grade
+
+        if isWarningGrade && gradeChanged {
+            if let recommendation = quality.recommendation {
+                emit(.qualityWarning(recommendation))
+            }
+        }
+
+        previousGrade = quality.grade
     }
 
     /// Stops periodic statistics emission.
