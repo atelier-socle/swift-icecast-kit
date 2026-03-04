@@ -11,6 +11,63 @@ public enum CLIParseError: Error, Sendable {
 
     /// The content type string is invalid.
     case invalidContentType(String)
+
+    /// The destination string is invalid.
+    case invalidDestination(String)
+}
+
+/// Parsed destination from a CLI `--dest` argument.
+public struct ParsedDestination: Sendable {
+
+    /// The destination label.
+    public let label: String
+
+    /// The server hostname.
+    public let host: String
+
+    /// The server port.
+    public let port: Int
+
+    /// The mountpoint path.
+    public let mountpoint: String
+
+    /// The authentication password.
+    public let password: String
+
+    /// The protocol mode string, if specified.
+    public let protocolString: String?
+}
+
+/// Parse a `--dest` argument string into a ``ParsedDestination``.
+///
+/// Format: `label:host:port:mountpoint:password[:protocol]`
+///
+/// - Parameter string: The destination string to parse.
+/// - Returns: A ``ParsedDestination`` with the parsed values.
+/// - Throws: ``CLIParseError/invalidDestination(_:)`` if the format is invalid.
+public func parseDestination(_ string: String) throws -> ParsedDestination {
+    let parts = string.split(separator: ":", maxSplits: 5).map(String.init)
+    guard parts.count >= 5 else {
+        throw CLIParseError.invalidDestination(
+            "Expected format label:host:port:mountpoint:password[:protocol], got: \(string)"
+        )
+    }
+    guard let port = Int(parts[2]) else {
+        throw CLIParseError.invalidDestination(
+            "Invalid port '\(parts[2])' in destination: \(string)"
+        )
+    }
+    let mountpoint = parts[3].hasPrefix("/") ? parts[3] : "/\(parts[3])"
+    let protocolString = parts.count > 5 ? parts[5] : nil
+
+    return ParsedDestination(
+        label: parts[0],
+        host: parts[1],
+        port: port,
+        mountpoint: mountpoint,
+        password: parts[4],
+        protocolString: protocolString
+    )
 }
 
 /// Parse a protocol string from CLI into a ProtocolMode.

@@ -153,11 +153,10 @@ struct StreamCommandTests {
         #expect(cmd.title == "My Song")
     }
 
-    @Test("Missing password fails validation")
-    func missingPasswordFails() {
-        #expect(throws: Error.self) {
-            _ = try StreamCommand.parse(["test.mp3"])
-        }
+    @Test("Missing password parses but password is nil")
+    func missingPasswordParsesNil() throws {
+        let cmd = try StreamCommand.parse(["test.mp3"])
+        #expect(cmd.password == nil)
     }
 
     @Test("Missing file argument fails validation")

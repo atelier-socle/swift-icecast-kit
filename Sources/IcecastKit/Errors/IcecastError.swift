@@ -96,6 +96,20 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
     /// The client is in an invalid state for the requested operation.
     case invalidState(current: String, expected: String)
 
+    // MARK: - Multi-Destination
+
+    /// A destination with the given label already exists.
+    case destinationAlreadyExists(label: String)
+
+    /// No destination with the given label was found.
+    case destinationNotFound(label: String)
+
+    /// All destinations failed to connect.
+    case allDestinationsFailed
+
+    /// Some destinations failed during a multi-destination send.
+    case partialSendFailure(successCount: Int, failureCount: Int)
+
     // MARK: - Data
 
     /// Sending audio data failed.
@@ -169,6 +183,16 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
             return "Already streaming to a mountpoint"
         case .invalidState(let current, let expected):
             return "Invalid state: currently \(current), expected \(expected)"
+
+        // Multi-Destination
+        case .destinationAlreadyExists(let label):
+            return "Destination already exists: \(label)"
+        case .destinationNotFound(let label):
+            return "Destination not found: \(label)"
+        case .allDestinationsFailed:
+            return "All destinations failed to connect"
+        case .partialSendFailure(let successCount, let failureCount):
+            return "Partial send failure: \(successCount) succeeded, \(failureCount) failed"
 
         // Data
         case .sendFailed(let reason):

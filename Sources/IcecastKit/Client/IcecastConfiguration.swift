@@ -176,6 +176,19 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     /// Set to `nil` to disable adaptive bitrate (default).
     public var adaptiveBitrate: AdaptiveBitratePolicy?
 
+    /// Authentication credentials for this connection.
+    ///
+    /// Required for multi-destination use via ``MultiIcecastClient``.
+    /// When using ``IcecastClient`` directly, credentials can also be
+    /// passed as a separate parameter to the initializer.
+    public var credentials: IcecastCredentials?
+
+    /// Reconnection policy for this connection.
+    ///
+    /// Controls automatic reconnection behavior including retry count,
+    /// backoff strategy, and jitter.
+    public var reconnectPolicy: ReconnectPolicy
+
     /// Creates a new Icecast configuration.
     ///
     /// - Parameters:
@@ -189,6 +202,8 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     ///   - adminCredentials: Optional admin credentials.
     ///   - metadataInterval: Metadata interval in bytes. Defaults to `8192`.
     ///   - adaptiveBitrate: Adaptive bitrate policy. Defaults to `nil` (disabled).
+    ///   - credentials: Authentication credentials. Defaults to `nil`.
+    ///   - reconnectPolicy: Reconnection policy. Defaults to `.default`.
     public init(
         host: String,
         port: Int = 8000,
@@ -199,7 +214,9 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         protocolMode: ProtocolMode = .auto,
         adminCredentials: IcecastCredentials? = nil,
         metadataInterval: Int = 8192,
-        adaptiveBitrate: AdaptiveBitratePolicy? = nil
+        adaptiveBitrate: AdaptiveBitratePolicy? = nil,
+        credentials: IcecastCredentials? = nil,
+        reconnectPolicy: ReconnectPolicy = .default
     ) {
         self.host = host
         self.port = port
@@ -211,6 +228,8 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         self.adminCredentials = adminCredentials
         self.metadataInterval = metadataInterval
         self.adaptiveBitrate = adaptiveBitrate
+        self.credentials = credentials
+        self.reconnectPolicy = reconnectPolicy
     }
 
     /// Creates a configuration and credentials from a URL string.
