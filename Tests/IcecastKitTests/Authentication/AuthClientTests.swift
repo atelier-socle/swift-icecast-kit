@@ -339,3 +339,140 @@ struct AuthClientIntegrationTests {
         await client.disconnect()
     }
 }
+
+// MARK: - Digest Auth Wire Format
+
+@Suite("IcecastAuthentication — Digest Wire Format")
+struct AuthDigestWireFormatTests {
+
+    @Test("Digest auth first request has no Authorization header")
+    func digestFirstRequestNoAuth() async throws {
+        let mock = MockTransportConnection()
+
+        let challengeResponse = [
+            "HTTP/1.1 401 Unauthorized",
+            "WWW-Authenticate: Digest realm=\"icecast\", nonce=\"n1\"",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        await mock.enqueueResponse(Data(challengeResponse.utf8))
+        await mock.enqueueResponse(
+            Data("HTTP/1.1 200 OK\r\n\r\n".utf8)
+        )
+
+        let config = IcecastConfiguration(
+            host: "localhost",
+            port: 8000,
+            mountpoint: "/live.mp3",
+            protocolMode: .icecastPUT,
+            authentication: .digest(
+                username: "source", password: "hackme"
+            )
+        )
+        let creds = IcecastCredentials(password: "unused")
+        let client = IcecastClient(
+            configuration: config,
+            credentials: creds,
+            connectionFactory: { mock }
+        )
+
+        try await client.connect()
+        let sentData = await mock.sentData
+        #expect(sentData.count == 2)
+        let firstRequest = String(decoding: sentData[0], as: UTF8.self)
+        #expect(!firstRequest.contains("Authorization:"))
+        await client.disconnect()
+    }
+
+    @Test("Digest retry creates new connection when server closes after 401")
+    func digestRetryNewConnection() async throws {
+        let mock = MockTransportConnection()
+        try await mock.connect(
+            host: "localhost", port: 8000, useTLS: false
+        )
+
+        let challengeResponse = [
+            "HTTP/1.1 401 Unauthorized",
+            "WWW-Authenticate: Digest realm=\"icecast\", nonce=\"n1\"",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        await mock.enqueueResponse(Data(challengeResponse.utf8))
+
+        let retryMock = MockTransportConnection()
+        await retryMock.enqueueResponse(
+            Data("HTTP/1.1 200 OK\r\n\r\n".utf8)
+        )
+
+        let config = IcecastConfiguration(
+            host: "localhost",
+            port: 8000,
+            mountpoint: "/live.mp3"
+        )
+
+        let proto = IcecastProtocol()
+        let newConn = try await proto.performPUTHandshake(
+            connection: mock,
+            configuration: config,
+            authentication: .digest(
+                username: "source", password: "hackme"
+            ),
+            connectionFactory: { retryMock }
+        )
+
+        #expect(newConn != nil)
+
+        let connectedHost = await retryMock.lastConnectHost
+        #expect(connectedHost == "localhost")
+        let connectedPort = await retryMock.lastConnectPort
+        #expect(connectedPort == 8000)
+
+        let retryData = await retryMock.sentData
+        #expect(retryData.count == 1)
+        let retryRequest = String(
+            decoding: retryData[0], as: UTF8.self
+        )
+        #expect(retryRequest.contains("Authorization: Digest"))
+        #expect(retryRequest.contains("username=\"source\""))
+    }
+
+    @Test("Digest SOURCE first request has no Authorization header")
+    func digestSourceFirstRequestNoAuth() async throws {
+        let mock = MockTransportConnection()
+
+        let challengeResponse = [
+            "HTTP/1.1 401 Unauthorized",
+            "WWW-Authenticate: Digest realm=\"icecast\", nonce=\"n1\"",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        await mock.enqueueResponse(Data(challengeResponse.utf8))
+        await mock.enqueueResponse(
+            Data("HTTP/1.1 200 OK\r\n\r\n".utf8)
+        )
+
+        let config = IcecastConfiguration(
+            host: "localhost",
+            port: 8000,
+            mountpoint: "/live.mp3",
+            protocolMode: .icecastSOURCE,
+            authentication: .digest(
+                username: "source", password: "hackme"
+            )
+        )
+        let creds = IcecastCredentials(password: "unused")
+        let client = IcecastClient(
+            configuration: config,
+            credentials: creds,
+            connectionFactory: { mock }
+        )
+
+        try await client.connect()
+        let sentData = await mock.sentData
+        #expect(sentData.count == 2)
+        let firstRequest = String(decoding: sentData[0], as: UTF8.self)
+        #expect(firstRequest.contains("SOURCE /live.mp3"))
+        #expect(!firstRequest.contains("Authorization:"))
+        await client.disconnect()
+    }
+}

@@ -155,6 +155,71 @@ public struct HTTPRequestBuilder: Sendable {
         return Data(request.utf8)
     }
 
+    /// Builds an Icecast HTTP PUT request without an Authorization header.
+    ///
+    /// Used for challenge-based authentication (Digest) where the initial
+    /// request is sent unauthenticated to trigger a 401 challenge.
+    ///
+    /// - Parameters:
+    ///   - mountpoint: The mount path (e.g., `"/live.mp3"`).
+    ///   - host: The server hostname.
+    ///   - port: The server port.
+    ///   - contentType: The audio content type.
+    ///   - stationInfo: Station metadata for ice-* headers.
+    /// - Returns: The raw HTTP request bytes ready to send.
+    public func buildIcecastPUT(
+        mountpoint: String,
+        host: String,
+        port: Int,
+        contentType: AudioContentType,
+        stationInfo: StationInfo
+    ) -> Data {
+        var lines: [String] = []
+
+        lines.append("PUT \(mountpoint) HTTP/1.1")
+        lines.append("Host: \(host):\(port)")
+        lines.append("Content-Type: \(contentType.rawValue)")
+        lines.append("User-Agent: \(Self.userAgent)")
+        lines.append("Expect: 100-continue")
+
+        appendIceHeaders(to: &lines, stationInfo: stationInfo)
+
+        lines.append("")
+        lines.append("")
+
+        let request = lines.joined(separator: "\r\n")
+        return Data(request.utf8)
+    }
+
+    /// Builds an Icecast SOURCE request without an Authorization header.
+    ///
+    /// Used for challenge-based authentication (Digest) where the initial
+    /// request is sent unauthenticated to trigger a 401 challenge.
+    ///
+    /// - Parameters:
+    ///   - mountpoint: The mount path (e.g., `"/live.mp3"`).
+    ///   - contentType: The audio content type.
+    ///   - stationInfo: Station metadata for ice-* headers.
+    /// - Returns: The raw HTTP request bytes ready to send.
+    public func buildIcecastSOURCE(
+        mountpoint: String,
+        contentType: AudioContentType,
+        stationInfo: StationInfo
+    ) -> Data {
+        var lines: [String] = []
+
+        lines.append("SOURCE \(mountpoint) ICE/1.0")
+        lines.append("Content-Type: \(contentType.rawValue)")
+
+        appendIceHeaders(to: &lines, stationInfo: stationInfo)
+
+        lines.append("")
+        lines.append("")
+
+        let request = lines.joined(separator: "\r\n")
+        return Data(request.utf8)
+    }
+
     /// Builds a SHOUTcast v1 password authentication line.
     ///
     /// SHOUTcast v1 sends the password as the first line after connecting.

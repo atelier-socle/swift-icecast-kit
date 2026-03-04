@@ -120,18 +120,23 @@ public struct IcecastProtocol: Sendable {
     /// Supports Bearer token (direct header), Digest (401 challenge/response),
     /// and Basic auth. For Digest auth, automatically handles the two-step
     /// challenge flow: send initial request → parse 401 challenge → retry
-    /// with computed digest response.
+    /// with computed digest response. If the server closes the connection
+    /// after 401, a new connection is created via `connectionFactory`.
     ///
     /// - Parameters:
     ///   - connection: The transport connection to use.
     ///   - configuration: The Icecast configuration.
     ///   - authentication: The authentication method to use.
+    ///   - connectionFactory: Factory for creating new connections on Digest retry.
+    /// - Returns: A new connection if one was created for Digest retry, `nil` otherwise.
     /// - Throws: ``IcecastError`` on handshake failure.
+    @discardableResult
     public func performPUTHandshake(
         connection: any TransportConnection,
         configuration: IcecastConfiguration,
-        authentication: IcecastAuthentication
-    ) async throws {
+        authentication: IcecastAuthentication,
+        connectionFactory: (@Sendable () -> any TransportConnection)? = nil
+    ) async throws -> (any TransportConnection)? {
         let mountpoint = resolveMountpoint(
             configuration.mountpoint,
             authentication: authentication
@@ -153,12 +158,16 @@ public struct IcecastProtocol: Sendable {
             let handler = DigestAuthHandler(
                 username: username, password: password
             )
-            try await handleDigestChallenge(
+            let ctx = DigestRetryContext(
+                method: "PUT", mountpoint: mountpoint,
+                configuration: configuration,
+                connectionFactory: connectionFactory
+            )
+            return try await handleDigestChallenge(
                 response: response,
                 connection: connection,
-                method: "PUT",
-                mountpoint: mountpoint,
                 handler: handler,
+                context: ctx,
                 buildRequest: { authValue in
                     self.requestBuilder.buildIcecastPUT(
                         mountpoint: mountpoint,
@@ -170,33 +179,38 @@ public struct IcecastProtocol: Sendable {
                     )
                 }
             )
-            return
         }
 
         // Handle Bearer token errors
         if case .bearer = authentication {
             try handleBearerResponse(response, mountpoint: mountpoint)
-            return
+            return nil
         }
 
         try handleResponse(response, mountpoint: mountpoint)
+        return nil
     }
 
     /// Performs an Icecast SOURCE handshake with advanced authentication.
     ///
     /// Supports Bearer token (direct header), Digest (401 challenge/response),
-    /// and Basic auth.
+    /// and Basic auth. If the server closes the connection after a Digest 401,
+    /// a new connection is created via `connectionFactory`.
     ///
     /// - Parameters:
     ///   - connection: The transport connection to use.
     ///   - configuration: The Icecast configuration.
     ///   - authentication: The authentication method to use.
+    ///   - connectionFactory: Factory for creating new connections on Digest retry.
+    /// - Returns: A new connection if one was created for Digest retry, `nil` otherwise.
     /// - Throws: ``IcecastError`` on handshake failure.
+    @discardableResult
     public func performSOURCEHandshake(
         connection: any TransportConnection,
         configuration: IcecastConfiguration,
-        authentication: IcecastAuthentication
-    ) async throws {
+        authentication: IcecastAuthentication,
+        connectionFactory: (@Sendable () -> any TransportConnection)? = nil
+    ) async throws -> (any TransportConnection)? {
         let mountpoint = resolveMountpoint(
             configuration.mountpoint,
             authentication: authentication
@@ -218,12 +232,16 @@ public struct IcecastProtocol: Sendable {
             let handler = DigestAuthHandler(
                 username: username, password: password
             )
-            try await handleDigestChallenge(
+            let ctx = DigestRetryContext(
+                method: "SOURCE", mountpoint: mountpoint,
+                configuration: configuration,
+                connectionFactory: connectionFactory
+            )
+            return try await handleDigestChallenge(
                 response: response,
                 connection: connection,
-                method: "SOURCE",
-                mountpoint: mountpoint,
                 handler: handler,
+                context: ctx,
                 buildRequest: { authValue in
                     self.requestBuilder.buildIcecastSOURCE(
                         mountpoint: mountpoint,
@@ -233,29 +251,42 @@ public struct IcecastProtocol: Sendable {
                     )
                 }
             )
-            return
         }
 
         // Handle Bearer token errors
         if case .bearer = authentication {
             try handleBearerResponse(response, mountpoint: mountpoint)
-            return
+            return nil
         }
 
         try handleResponse(response, mountpoint: mountpoint)
+        return nil
     }
 
     // MARK: - Private
 
+    /// Context for Digest challenge/response retry, bundling connection retry parameters.
+    private struct DigestRetryContext {
+        let method: String
+        let mountpoint: String
+        let configuration: IcecastConfiguration
+        let connectionFactory: (@Sendable () -> any TransportConnection)?
+    }
+
     /// Handles a Digest auth 401 challenge by computing the response and retrying.
+    ///
+    /// Tries to retry on the existing connection (keep-alive). If the server
+    /// closed the connection after 401, falls back to creating a new connection
+    /// via `connectionFactory`.
+    ///
+    /// - Returns: A new connection if one was created, `nil` if the original was reused.
     private func handleDigestChallenge(
         response: HTTPResponse,
         connection: any TransportConnection,
-        method: String,
-        mountpoint: String,
         handler: DigestAuthHandler,
+        context: DigestRetryContext,
         buildRequest: (String) -> Data
-    ) async throws {
+    ) async throws -> (any TransportConnection)? {
         guard let wwwAuth = response.headers["www-authenticate"] else {
             throw IcecastError.digestAuthFailed(
                 reason: "Server returned 401 without WWW-Authenticate header"
@@ -269,39 +300,93 @@ public struct IcecastProtocol: Sendable {
         }
 
         let digestHeader = handler.authorizationHeader(
-            for: challenge, method: method, uri: mountpoint
+            for: challenge, method: context.method, uri: context.mountpoint
         )
         let retryRequest = buildRequest(digestHeader)
 
-        try await connection.send(retryRequest)
-        let retryData = try await connection.receive(
-            maxBytes: Self.maxResponseSize,
-            timeout: Self.defaultTimeout
+        // Try keep-alive first, fall back to new connection
+        let (retryData, newConnection) = try await sendDigestRetry(
+            request: retryRequest,
+            connection: connection,
+            configuration: context.configuration,
+            connectionFactory: context.connectionFactory
         )
 
+        let effectiveConnection = newConnection ?? connection
+
         guard !retryData.isEmpty else {
+            if let conn = newConnection { await conn.close() }
             throw IcecastError.digestAuthFailed(
                 reason: "Empty response after Digest authentication"
             )
         }
 
-        var retryResponse = try responseParser.parse(retryData)
+        do {
+            var retryResponse = try responseParser.parse(retryData)
 
-        if retryResponse.statusCode == 100 {
-            let finalData = try await connection.receive(
+            if retryResponse.statusCode == 100 {
+                let finalData = try await effectiveConnection.receive(
+                    maxBytes: Self.maxResponseSize,
+                    timeout: Self.defaultTimeout
+                )
+                retryResponse = try responseParser.parse(finalData)
+            }
+
+            if retryResponse.statusCode == 401 {
+                if let conn = newConnection { await conn.close() }
+                throw IcecastError.digestAuthFailed(
+                    reason: "Server rejected Digest credentials"
+                )
+            }
+
+            try handleResponse(retryResponse, mountpoint: context.mountpoint)
+            return newConnection
+        } catch {
+            if let conn = newConnection { await conn.close() }
+            throw error
+        }
+    }
+
+    /// Sends the Digest retry request, trying keep-alive first.
+    ///
+    /// If the existing connection is still open (keep-alive), reuses it.
+    /// If the send fails (server closed connection after 401), creates a
+    /// new connection via the factory and retries on it.
+    ///
+    /// - Returns: The response data and the new connection (if one was created).
+    private func sendDigestRetry(
+        request: Data,
+        connection: any TransportConnection,
+        configuration: IcecastConfiguration,
+        connectionFactory: (@Sendable () -> any TransportConnection)?
+    ) async throws -> (Data, (any TransportConnection)?) {
+        do {
+            try await connection.send(request)
+            let data = try await connection.receive(
                 maxBytes: Self.maxResponseSize,
                 timeout: Self.defaultTimeout
             )
-            retryResponse = try responseParser.parse(finalData)
+            return (data, nil)
+        } catch {
+            guard let factory = connectionFactory else { throw error }
+            let newConn = factory()
+            do {
+                try await newConn.connect(
+                    host: configuration.host,
+                    port: configuration.port,
+                    useTLS: configuration.useTLS
+                )
+                try await newConn.send(request)
+                let data = try await newConn.receive(
+                    maxBytes: Self.maxResponseSize,
+                    timeout: Self.defaultTimeout
+                )
+                return (data, newConn)
+            } catch {
+                await newConn.close()
+                throw error
+            }
         }
-
-        if retryResponse.statusCode == 401 {
-            throw IcecastError.digestAuthFailed(
-                reason: "Server rejected Digest credentials"
-            )
-        }
-
-        try handleResponse(retryResponse, mountpoint: mountpoint)
     }
 
     /// Handles Bearer token-specific response codes.
@@ -391,10 +476,10 @@ extension IcecastProtocol {
             )
         }
 
-        let creds = authentication.credentials ?? IcecastCredentials(password: "")
+        // Challenge-based auth (Digest): send without Authorization header
+        // so the server responds with 401 + WWW-Authenticate challenge.
         return requestBuilder.buildIcecastPUT(
             mountpoint: mountpoint,
-            credentials: creds,
             host: configuration.host,
             port: configuration.port,
             contentType: configuration.contentType,
@@ -417,10 +502,9 @@ extension IcecastProtocol {
             )
         }
 
-        let creds = authentication.credentials ?? IcecastCredentials(password: "")
+        // Challenge-based auth (Digest): send without Authorization header.
         return requestBuilder.buildIcecastSOURCE(
             mountpoint: mountpoint,
-            credentials: creds,
             contentType: configuration.contentType,
             stationInfo: configuration.stationInfo
         )

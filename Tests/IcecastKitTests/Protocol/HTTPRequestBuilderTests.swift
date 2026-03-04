@@ -414,4 +414,32 @@ struct HTTPRequestBuilderTests {
         let request = String(decoding: data, as: UTF8.self)
         #expect(!request.contains("Host:"))
     }
+
+    // MARK: - No-Auth Overloads (Digest Challenge)
+
+    @Test("PUT no-auth request omits Authorization header")
+    func putNoAuthOmitsAuthorization() {
+        let data = builder.buildIcecastPUT(
+            mountpoint: "/live.mp3",
+            host: "localhost", port: 8000,
+            contentType: .mp3, stationInfo: station
+        )
+        let request = String(decoding: data, as: UTF8.self)
+        #expect(request.contains("PUT /live.mp3 HTTP/1.1"))
+        #expect(request.contains("Host: localhost:8000"))
+        #expect(request.contains("Content-Type: audio/mpeg"))
+        #expect(!request.contains("Authorization:"))
+    }
+
+    @Test("SOURCE no-auth request omits Authorization header")
+    func sourceNoAuthOmitsAuthorization() {
+        let data = builder.buildIcecastSOURCE(
+            mountpoint: "/live.mp3",
+            contentType: .mp3, stationInfo: station
+        )
+        let request = String(decoding: data, as: UTF8.self)
+        #expect(request.contains("SOURCE /live.mp3 ICE/1.0"))
+        #expect(request.contains("Content-Type: audio/mpeg"))
+        #expect(!request.contains("Authorization:"))
+    }
 }

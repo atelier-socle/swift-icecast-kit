@@ -89,34 +89,18 @@ public actor ProtocolNegotiator {
                 authentication: authentication
             )
         case .icecastPUT:
-            if let auth = authentication {
-                try await icecastProtocol.performPUTHandshake(
-                    connection: connection,
-                    configuration: configuration,
-                    authentication: auth
-                )
-            } else {
-                try await icecastProtocol.performPUTHandshake(
-                    connection: connection,
-                    configuration: configuration,
-                    credentials: credentials
-                )
-            }
+            try await performIcecastHandshake(
+                mode: .put, connection: connection,
+                configuration: configuration,
+                credentials: credentials, authentication: authentication
+            )
             return .icecastPUT
         case .icecastSOURCE:
-            if let auth = authentication {
-                try await icecastProtocol.performSOURCEHandshake(
-                    connection: connection,
-                    configuration: configuration,
-                    authentication: auth
-                )
-            } else {
-                try await icecastProtocol.performSOURCEHandshake(
-                    connection: connection,
-                    configuration: configuration,
-                    credentials: credentials
-                )
-            }
+            try await performIcecastHandshake(
+                mode: .source, connection: connection,
+                configuration: configuration,
+                credentials: credentials, authentication: authentication
+            )
             return .icecastSOURCE
         case .shoutcastV1:
             let effectiveCredentials = authentication?.credentials ?? credentials
@@ -142,6 +126,50 @@ public actor ProtocolNegotiator {
 
     // MARK: - Private
 
+    private enum HandshakeMode { case put, source }
+
+    /// Performs an Icecast handshake (PUT or SOURCE) with optional advanced auth.
+    private func performIcecastHandshake(
+        mode: HandshakeMode,
+        connection: any TransportConnection,
+        configuration: IcecastConfiguration,
+        credentials: IcecastCredentials,
+        authentication: IcecastAuthentication?
+    ) async throws {
+        if let auth = authentication {
+            let newConn: (any TransportConnection)?
+            switch mode {
+            case .put:
+                newConn = try await icecastProtocol.performPUTHandshake(
+                    connection: connection, configuration: configuration,
+                    authentication: auth, connectionFactory: connectionFactory
+                )
+            case .source:
+                newConn = try await icecastProtocol.performSOURCEHandshake(
+                    connection: connection, configuration: configuration,
+                    authentication: auth, connectionFactory: connectionFactory
+                )
+            }
+            if let newConn {
+                await connection.close()
+                fallbackConnection = newConn
+            }
+        } else {
+            switch mode {
+            case .put:
+                try await icecastProtocol.performPUTHandshake(
+                    connection: connection, configuration: configuration,
+                    credentials: credentials
+                )
+            case .source:
+                try await icecastProtocol.performSOURCEHandshake(
+                    connection: connection, configuration: configuration,
+                    credentials: credentials
+                )
+            }
+        }
+    }
+
     /// Auto-negotiation: try PUT first, fallback to SOURCE.
     private func negotiateAuto(
         connection: any TransportConnection,
@@ -151,11 +179,16 @@ public actor ProtocolNegotiator {
     ) async throws -> ProtocolMode {
         do {
             if let auth = authentication {
-                try await icecastProtocol.performPUTHandshake(
+                let newConn = try await icecastProtocol.performPUTHandshake(
                     connection: connection,
                     configuration: configuration,
-                    authentication: auth
+                    authentication: auth,
+                    connectionFactory: connectionFactory
                 )
+                if let newConn {
+                    await connection.close()
+                    fallbackConnection = newConn
+                }
             } else {
                 try await icecastProtocol.performPUTHandshake(
                     connection: connection,
@@ -192,19 +225,26 @@ public actor ProtocolNegotiator {
 
         do {
             if let auth = authentication {
-                try await icecastProtocol.performSOURCEHandshake(
+                let digestConn = try await icecastProtocol.performSOURCEHandshake(
                     connection: newConnection,
                     configuration: configuration,
-                    authentication: auth
+                    authentication: auth,
+                    connectionFactory: connectionFactory
                 )
+                if let digestConn {
+                    await newConnection.close()
+                    fallbackConnection = digestConn
+                } else {
+                    fallbackConnection = newConnection
+                }
             } else {
                 try await icecastProtocol.performSOURCEHandshake(
                     connection: newConnection,
                     configuration: configuration,
                     credentials: credentials
                 )
+                fallbackConnection = newConnection
             }
-            fallbackConnection = newConnection
             return .icecastSOURCE
         } catch {
             await newConnection.close()
