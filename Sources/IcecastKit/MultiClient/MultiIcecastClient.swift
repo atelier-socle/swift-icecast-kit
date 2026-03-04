@@ -553,4 +553,28 @@ public actor MultiIcecastClient {
         }
         eventContinuation.yield(.allConnected)
     }
+
+    // MARK: - Metrics Export
+
+    /// Attaches a metrics exporter for all destinations.
+    ///
+    /// Each destination receives labels including its label, mountpoint, and server.
+    /// Pass `nil` as exporter to detach the current exporter from all destinations.
+    ///
+    /// - Parameters:
+    ///   - exporter: The metrics exporter to attach, or `nil` to detach.
+    ///   - interval: Export interval in seconds. Clamped to minimum 1.0.
+    public func setMetricsExporter<Exporter: IcecastMetricsExporter>(
+        _ exporter: Exporter?,
+        interval: TimeInterval = 10.0
+    ) async {
+        for entry in entries.values {
+            let labels: [String: String] = [
+                "destination": entry.label
+            ]
+            await entry.client.setMetricsExporter(
+                exporter, interval: interval, labels: labels
+            )
+        }
+    }
 }

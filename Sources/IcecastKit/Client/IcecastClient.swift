@@ -35,6 +35,10 @@ public actor IcecastClient {
     private var networkConditionMonitor: NetworkConditionMonitor?
     private var abrRelayTask: Task<Void, Never>?
     private var recorder: StreamRecorder?
+    private var metricsExporter: (any IcecastMetricsExporter)?
+    private var metricsInterval: TimeInterval = 10.0
+    private var metricsLabels: [String: String] = [:]
+    private var metricsTask: Task<Void, Never>?
 
     /// The connection monitor for advanced statistics access.
     public let monitor: ConnectionMonitor
@@ -104,6 +108,12 @@ public actor IcecastClient {
         self.monitor = ConnectionMonitor()
     }
 
+    deinit {
+        reconnectTask?.cancel()
+        abrRelayTask?.cancel()
+        metricsTask?.cancel()
+    }
+
     // MARK: - Connection Lifecycle
 
     /// Connects to the server.
@@ -171,6 +181,7 @@ public actor IcecastClient {
         await emitConnectedEvents(port: port, mode: mode)
         startABRIfConfigured()
         await startRecordingIfConfigured()
+        startMetricsExportIfConfigured()
     }
 
     /// Sends audio data to the server.
@@ -256,6 +267,7 @@ public actor IcecastClient {
         reconnectTask?.cancel()
         reconnectTask = nil
         stopABR()
+        await stopMetricsExport()
         await stopRecorderIfActive()
 
         if let transport = connection {
@@ -629,5 +641,73 @@ extension IcecastClient {
                 .recordingError(mapToIcecastError(error))
             )
         }
+    }
+}
+
+// MARK: - Metrics Export
+
+extension IcecastClient {
+
+    /// Attaches a metrics exporter for periodic statistics export.
+    ///
+    /// Starts periodic export immediately if already connected.
+    /// Pass `nil` as exporter to detach the current exporter.
+    ///
+    /// - Parameters:
+    ///   - exporter: The metrics exporter to attach, or `nil` to detach.
+    ///   - interval: Export interval in seconds. Clamped to minimum 1.0.
+    ///   - labels: Labels to attach to exported metrics.
+    public func setMetricsExporter<E: IcecastMetricsExporter>(
+        _ exporter: E?,
+        interval: TimeInterval = 10.0,
+        labels: [String: String] = [:]
+    ) async {
+        await stopMetricsExport()
+
+        if let exporter {
+            metricsExporter = exporter
+            metricsInterval = max(1.0, interval)
+            metricsLabels = labels
+            if currentState.isActive {
+                startMetricsExportIfConfigured()
+            }
+        } else {
+            metricsExporter = nil
+            metricsLabels = [:]
+        }
+    }
+
+    /// Starts the metrics export timer if an exporter is configured.
+    func startMetricsExportIfConfigured() {
+        guard let exporter = metricsExporter else { return }
+        let interval = metricsInterval
+        let labels = resolveMetricsLabels()
+
+        metricsTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { break }
+                let stats = await monitor.statistics
+                await exporter.export(stats, labels: labels)
+            }
+        }
+    }
+
+    /// Stops the metrics export timer and flushes the exporter.
+    func stopMetricsExport() async {
+        metricsTask?.cancel()
+        metricsTask = nil
+        if let exporter = metricsExporter {
+            await exporter.flush()
+        }
+    }
+
+    /// Resolves metric labels by merging auto-labels with consumer labels.
+    private func resolveMetricsLabels() -> [String: String] {
+        let autoLabels: [String: String] = [
+            "mountpoint": configuration.mountpoint,
+            "server": configuration.host
+        ]
+        return autoLabels.merging(metricsLabels) { _, consumer in consumer }
     }
 }
