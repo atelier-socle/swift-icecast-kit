@@ -363,6 +363,56 @@ struct IcecastRelayTests {
         await relay.disconnect()
     }
 
+    @Test("stationName reflects icy-name header")
+    func stationNameReflected() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(
+            Data(
+                "HTTP/1.0 200 OK\r\ncontent-type: audio/mpeg\r\nicy-name: Classic Rock Radio\r\n\r\n"
+                    .utf8
+            )
+        )
+        await mock.enqueueResponse(Data(repeating: 0xAA, count: 10))
+
+        let config = IcecastRelayConfiguration(
+            sourceURL: "http://localhost:8000/live.mp3"
+        )
+        let relay = IcecastRelay(
+            configuration: config,
+            transportFactory: { mock }
+        )
+
+        try await relay.connect()
+        let name = await relay.stationName
+        #expect(name == "Classic Rock Radio")
+        await relay.disconnect()
+    }
+
+    @Test("stationName is nil when icy-name header absent")
+    func stationNameNilWhenAbsent() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(
+            Data(
+                "HTTP/1.0 200 OK\r\ncontent-type: audio/mpeg\r\n\r\n"
+                    .utf8
+            )
+        )
+        await mock.enqueueResponse(Data(repeating: 0xAA, count: 10))
+
+        let config = IcecastRelayConfiguration(
+            sourceURL: "http://localhost:8000/live.mp3"
+        )
+        let relay = IcecastRelay(
+            configuration: config,
+            transportFactory: { mock }
+        )
+
+        try await relay.connect()
+        let name = await relay.stationName
+        #expect(name == nil)
+        await relay.disconnect()
+    }
+
     @Test("serverVersion reflects HTTP headers")
     func serverVersionReflected() async throws {
         let mock = MockTransportConnection()

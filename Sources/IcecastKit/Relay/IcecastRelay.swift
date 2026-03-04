@@ -57,6 +57,7 @@ public actor IcecastRelay {
     private var contentType: AudioContentType?
     private var totalBytesReceived: Int64 = 0
     private var server: String?
+    private var station: String?
     private var audioContinuation: AsyncStream<AudioChunk>.Continuation?
     private var eventContinuation: AsyncStream<RelayEvent>.Continuation?
     private let audioStreamStorage: AsyncStream<AudioChunk>
@@ -122,6 +123,7 @@ public actor IcecastRelay {
         let detectedType = resolveContentType(headers.contentType)
         contentType = detectedType
         server = headers.serverVersion
+        station = headers.icyName
 
         eventContinuation?.yield(
             .connected(
@@ -182,6 +184,9 @@ public actor IcecastRelay {
 
     /// Server version from response headers (e.g. `"Icecast 2.4.4"`).
     public var serverVersion: String? { server }
+
+    /// Station name from the `icy-name` response header, if present.
+    public var stationName: String? { station }
 
     /// Events stream for relay lifecycle events.
     public nonisolated var events: AsyncStream<RelayEvent> {

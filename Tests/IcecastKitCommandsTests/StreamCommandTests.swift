@@ -165,4 +165,104 @@ struct StreamCommandTests {
             _ = try StreamCommand.parse(["--password", "secret"])
         }
     }
+
+    // MARK: - Auth Type Parsing
+
+    @Test("Default auth-type is basic")
+    func defaultAuthType() throws {
+        let cmd = try StreamCommand.parse(["test.mp3", "--password", "secret"])
+        #expect(cmd.authType == "basic")
+    }
+
+    @Test("Auth-type digest parsing")
+    func authTypeDigest() throws {
+        let cmd = try StreamCommand.parse([
+            "test.mp3", "--password", "secret", "--auth-type", "digest"
+        ])
+        #expect(cmd.authType == "digest")
+    }
+
+    @Test("Auth-type bearer with token parsing")
+    func authTypeBearerWithToken() throws {
+        let cmd = try StreamCommand.parse([
+            "test.mp3", "--auth-type", "bearer", "--token", "my-token"
+        ])
+        #expect(cmd.authType == "bearer")
+        #expect(cmd.token == "my-token")
+    }
+
+    @Test("resolveAuthentication basic returns .basic")
+    func resolveBasicAuth() throws {
+        let auth = try resolveAuthentication(
+            authType: "basic", username: "source",
+            password: "hackme", token: nil
+        )
+        if case .basic(let user, let pass) = auth {
+            #expect(user == "source")
+            #expect(pass == "hackme")
+        } else {
+            Issue.record("Expected .basic authentication")
+        }
+    }
+
+    @Test("resolveAuthentication digest returns .digest")
+    func resolveDigestAuth() throws {
+        let auth = try resolveAuthentication(
+            authType: "digest", username: "admin",
+            password: "secret", token: nil
+        )
+        if case .digest(let user, let pass) = auth {
+            #expect(user == "admin")
+            #expect(pass == "secret")
+        } else {
+            Issue.record("Expected .digest authentication")
+        }
+    }
+
+    @Test("resolveAuthentication bearer returns .bearer")
+    func resolveBearerAuth() throws {
+        let auth = try resolveAuthentication(
+            authType: "bearer", username: "source",
+            password: nil, token: "my-api-token"
+        )
+        if case .bearer(let tok) = auth {
+            #expect(tok == "my-api-token")
+        } else {
+            Issue.record("Expected .bearer authentication")
+        }
+    }
+
+    @Test("resolveAuthentication query-token returns .queryToken")
+    func resolveQueryTokenAuth() throws {
+        let auth = try resolveAuthentication(
+            authType: "query-token", username: "source",
+            password: nil, token: "abc123"
+        )
+        if case .queryToken(let key, let value) = auth {
+            #expect(key == "token")
+            #expect(value == "abc123")
+        } else {
+            Issue.record("Expected .queryToken authentication")
+        }
+    }
+
+    @Test("resolveAuthentication bearer without token throws")
+    func resolveBearerWithoutTokenThrows() {
+        #expect(throws: CLIParseError.self) {
+            _ = try resolveAuthentication(
+                authType: "bearer", username: "source",
+                password: nil, token: nil
+            )
+        }
+    }
+
+    @Test("resolveAuthentication invalid type throws")
+    func resolveInvalidAuthTypeThrows() {
+        #expect(throws: CLIParseError.self) {
+            _ = try resolveAuthentication(
+                authType: "oauth2", username: "source",
+                password: "pass", token: nil
+            )
+        }
+    }
 }

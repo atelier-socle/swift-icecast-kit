@@ -82,11 +82,44 @@ struct TestConnectionCommandTests {
         #expect(cmd.noColor)
     }
 
-    @Test("Missing password fails validation")
-    func missingPasswordFails() {
-        #expect(throws: Error.self) {
-            _ = try TestConnectionCommand.parse([])
-        }
+    @Test("Missing password parses but password is nil")
+    func missingPasswordParsesAsNil() throws {
+        let cmd = try TestConnectionCommand.parse([])
+        #expect(cmd.password == nil)
+    }
+
+    // MARK: - Auth Type Options
+
+    @Test("Default auth-type is basic")
+    func defaultAuthType() throws {
+        let cmd = try TestConnectionCommand.parse(["--password", "secret"])
+        #expect(cmd.authType == "basic")
+    }
+
+    @Test("Auth-type digest parsing")
+    func authTypeDigest() throws {
+        let cmd = try TestConnectionCommand.parse([
+            "--password", "secret", "--auth-type", "digest"
+        ])
+        #expect(cmd.authType == "digest")
+    }
+
+    @Test("Auth-type bearer with token parsing")
+    func authTypeBearerWithToken() throws {
+        let cmd = try TestConnectionCommand.parse([
+            "--auth-type", "bearer", "--token", "my-api-token"
+        ])
+        #expect(cmd.authType == "bearer")
+        #expect(cmd.token == "my-api-token")
+    }
+
+    @Test("Auth-type query-token with token parsing")
+    func authTypeQueryTokenWithToken() throws {
+        let cmd = try TestConnectionCommand.parse([
+            "--auth-type", "query-token", "--token", "abc123"
+        ])
+        #expect(cmd.authType == "query-token")
+        #expect(cmd.token == "abc123")
     }
 
     // MARK: - Exit Code Mapping

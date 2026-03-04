@@ -14,6 +14,12 @@ public enum CLIParseError: Error, Sendable {
 
     /// The destination string is invalid.
     case invalidDestination(String)
+
+    /// The authentication type string is invalid.
+    case invalidAuthType(String)
+
+    /// A required option is missing for the chosen auth type.
+    case missingRequiredOption(String)
 }
 
 /// Parsed destination from a CLI `--dest` argument.
@@ -119,5 +125,54 @@ public func parseContentType(_ string: String) throws -> AudioContentType {
         return .oggOpus
     default:
         throw CLIParseError.invalidContentType(string)
+    }
+}
+
+/// Resolve an ``IcecastAuthentication`` from CLI `--auth-type` and `--token` options.
+///
+/// - Parameters:
+///   - authType: The auth type string (basic, digest, bearer, query-token).
+///   - username: The username (used for basic/digest).
+///   - password: The password (used for basic/digest).
+///   - token: The token value (used for bearer/query-token).
+/// - Returns: The resolved ``IcecastAuthentication``.
+/// - Throws: ``CLIParseError`` if the auth type is invalid or required options are missing.
+public func resolveAuthentication(
+    authType: String,
+    username: String,
+    password: String?,
+    token: String?
+) throws -> IcecastAuthentication {
+    switch authType.lowercased() {
+    case "basic":
+        guard let password, !password.isEmpty else {
+            throw CLIParseError.missingRequiredOption(
+                "--password is required with --auth-type basic"
+            )
+        }
+        return .basic(username: username, password: password)
+    case "digest":
+        guard let password, !password.isEmpty else {
+            throw CLIParseError.missingRequiredOption(
+                "--password is required with --auth-type digest"
+            )
+        }
+        return .digest(username: username, password: password)
+    case "bearer":
+        guard let token, !token.isEmpty else {
+            throw CLIParseError.missingRequiredOption(
+                "--token is required with --auth-type bearer"
+            )
+        }
+        return .bearer(token: token)
+    case "query-token":
+        guard let token, !token.isEmpty else {
+            throw CLIParseError.missingRequiredOption(
+                "--token is required with --auth-type query-token"
+            )
+        }
+        return .queryToken(key: "token", value: token)
+    default:
+        throw CLIParseError.invalidAuthType(authType)
     }
 }

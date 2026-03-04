@@ -81,6 +81,19 @@ public struct StreamCommand: AsyncParsableCommand {
     )
     var bitrate: Int?
 
+    // MARK: - Authentication Options
+
+    /// Authentication type.
+    @Option(
+        name: .long,
+        help: "Authentication type: basic, digest, bearer, query-token"
+    )
+    var authType: String = "basic"
+
+    /// Token value for bearer or query-token authentication.
+    @Option(name: .long, help: "Token for --auth-type bearer or query-token")
+    var token: String?
+
     // MARK: - Flags
 
     /// Loop the file continuously.
@@ -107,18 +120,21 @@ public struct StreamCommand: AsyncParsableCommand {
 
         var reader = try openAudioFile(color: color)
 
+        let needsPassword = authType == "basic" || authType == "digest"
         if !dest.isEmpty {
             try await runMultiDestination(
                 reader: &reader, progress: progress, color: color
             )
         } else {
-            guard let password, !password.isEmpty else {
-                throw CLIParseError.invalidDestination(
-                    "Password is required for single-destination mode"
-                )
+            if needsPassword {
+                guard let password, !password.isEmpty else {
+                    throw CLIParseError.missingRequiredOption(
+                        "--password is required with --auth-type \(authType)"
+                    )
+                }
             }
             try await runSingleDestination(
-                password: password,
+                password: password ?? "",
                 reader: &reader,
                 progress: progress,
                 color: color
@@ -134,7 +150,13 @@ public struct StreamCommand: AsyncParsableCommand {
         progress: ProgressDisplay,
         color: ColorOutput
     ) async throws {
-        let config = try buildConfiguration(audioType: reader.contentType)
+        let auth = try resolveAuthentication(
+            authType: authType, username: username,
+            password: password, token: token
+        )
+        let config = try buildConfiguration(
+            audioType: reader.contentType, authentication: auth
+        )
         let credentials = IcecastCredentials(
             username: username, password: password
         )
@@ -200,6 +222,10 @@ public struct StreamCommand: AsyncParsableCommand {
         color: ColorOutput
     ) async throws {
         guard let password, !password.isEmpty else { return }
+        let auth = try resolveAuthentication(
+            authType: authType, username: username,
+            password: password, token: token
+        )
         let mode = try parseProtocolMode(self.protocol)
         let audioType: AudioContentType? = try contentType.map {
             try parseContentType($0)
@@ -214,7 +240,8 @@ public struct StreamCommand: AsyncParsableCommand {
             credentials: IcecastCredentials(
                 username: username, password: password
             ),
-            reconnectPolicy: policy
+            reconnectPolicy: policy,
+            authentication: auth
         )
         try await multi.addDestination("primary", configuration: config)
         print(color.info("  + primary: \(host):\(port)\(mountpoint)"))
@@ -307,7 +334,8 @@ public struct StreamCommand: AsyncParsableCommand {
     }
 
     private func buildConfiguration(
-        audioType: AudioContentType
+        audioType: AudioContentType,
+        authentication: IcecastAuthentication? = nil
     ) throws -> IcecastConfiguration {
         let mode = try parseProtocolMode(self.protocol)
         return IcecastConfiguration(
@@ -316,7 +344,8 @@ public struct StreamCommand: AsyncParsableCommand {
             mountpoint: mountpoint,
             useTLS: tls,
             contentType: audioType,
-            protocolMode: mode
+            protocolMode: mode,
+            authentication: authentication
         )
     }
 

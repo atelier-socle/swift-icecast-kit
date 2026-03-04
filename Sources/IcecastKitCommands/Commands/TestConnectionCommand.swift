@@ -34,11 +34,25 @@ public struct TestConnectionCommand: AsyncParsableCommand {
 
     /// Auth password.
     @Option(name: .long, help: "Auth password")
-    var password: String
+    var password: String?
 
     /// Protocol mode.
-    @Option(name: .long, help: "Protocol: auto, icecast-put, icecast-source, shoutcast-v1, shoutcast-v2:<id>")
+    @Option(
+        name: .long,
+        help: "Protocol: auto, icecast-put, icecast-source, shoutcast-v1, shoutcast-v2:<id>"
+    )
     var `protocol`: String = "auto"
+
+    /// Authentication type.
+    @Option(
+        name: .long,
+        help: "Authentication type: basic, digest, bearer, query-token"
+    )
+    var authType: String = "basic"
+
+    /// Token value for bearer or query-token authentication.
+    @Option(name: .long, help: "Token for --auth-type bearer or query-token")
+    var token: String?
 
     /// Use TLS/HTTPS.
     @Flag(name: .long, help: "Use TLS/HTTPS")
@@ -54,16 +68,39 @@ public struct TestConnectionCommand: AsyncParsableCommand {
         let color = ColorOutput(noColor: noColor)
         let progress = ProgressDisplay(color: color)
 
+        let needsPassword = authType == "basic" || authType == "digest"
+        if needsPassword {
+            guard let password, !password.isEmpty else {
+                throw CLIParseError.missingRequiredOption(
+                    "--password is required with --auth-type \(authType)"
+                )
+            }
+        }
+
+        let auth = try resolveAuthentication(
+            authType: authType, username: username,
+            password: password, token: token
+        )
         let mode = try parseProtocolMode(self.protocol)
         let config = IcecastConfiguration(
-            host: host, port: port, mountpoint: mountpoint, useTLS: tls, protocolMode: mode
+            host: host, port: port, mountpoint: mountpoint,
+            useTLS: tls, protocolMode: mode, authentication: auth
         )
-        let credentials = IcecastCredentials(username: username, password: password)
-        let client = IcecastClient(configuration: config, credentials: credentials, reconnectPolicy: .none)
+        let credentials = IcecastCredentials(
+            username: username, password: password ?? ""
+        )
+        let client = IcecastClient(
+            configuration: config, credentials: credentials,
+            reconnectPolicy: .none
+        )
 
         do {
             try await client.connect()
-            print(progress.formatConnected(host: host, port: port, mountpoint: mountpoint, protocolName: self.protocol))
+            print(
+                progress.formatConnected(
+                    host: host, port: port,
+                    mountpoint: mountpoint, protocolName: self.protocol
+                ))
             await client.disconnect()
         } catch let error as IcecastError {
             printError(error: error, progress: progress)

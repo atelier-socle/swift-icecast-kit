@@ -5,6 +5,21 @@ import ArgumentParser
 import Foundation
 import IcecastKit
 
+/// Thread-safe metadata update counter for relay event tracking.
+private actor MetadataTracker {
+    var count: Int = 0
+    var lastTitle: String?
+
+    /// Records a metadata update if the title has changed.
+    /// Returns the new title if it should be displayed, nil otherwise.
+    func track(title: String) -> String? {
+        guard title != lastTitle else { return nil }
+        lastTitle = title
+        count += 1
+        return title
+    }
+}
+
 /// Relay an Icecast stream: receive audio from a source and optionally
 /// re-publish to other servers and/or record locally.
 public struct RelayCommand: AsyncParsableCommand {
@@ -67,10 +82,27 @@ public struct RelayCommand: AsyncParsableCommand {
             print(color.info("Recording to \(recordDir)"))
         }
 
+        // Listen for metadata events in parallel
+        let tracker = MetadataTracker()
+        let eventColor = color
+        let eventTask = Task {
+            for await event in relay.events {
+                if case .metadataUpdated(let meta) = event,
+                    let title = meta.streamTitle, !title.isEmpty
+                {
+                    if let displayed = await tracker.track(title: title) {
+                        print(eventColor.info("♪  \(displayed)"))
+                    }
+                }
+            }
+        }
+
         // relayLoop guarantees recorder.stop() in all exit paths
         await relayLoop(
             relay: relay, clients: clients, recorder: recorder
         )
+
+        eventTask.cancel()
 
         for client in clients {
             await client.disconnect()
@@ -78,8 +110,12 @@ public struct RelayCommand: AsyncParsableCommand {
         await relay.disconnect()
 
         let received = await relay.bytesReceived
+        let metaCount = await tracker.count
         print(color.success("Relay stopped."))
         print("  Bytes received: \(received)")
+        if metaCount > 0 {
+            print("  Metadata updates: \(metaCount)")
+        }
         if let rec = recorder {
             let stats = await rec.statistics
             print(
@@ -101,8 +137,13 @@ public struct RelayCommand: AsyncParsableCommand {
             print(color.error("\(error)"))
             throw ExitCode(TestConnectionCommand.mapExitCode(error))
         }
+        let stationName = await relay.stationName
         let serverInfo = await relay.serverVersion ?? "unknown"
-        print(color.success("Connected to \(serverInfo)"))
+        if let name = stationName, !name.isEmpty {
+            print(color.success("Connected to \(name) (\(serverInfo))"))
+        } else {
+            print(color.success("Connected to \(serverInfo)"))
+        }
         return relay
     }
 
