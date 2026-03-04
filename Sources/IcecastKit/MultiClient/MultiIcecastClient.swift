@@ -535,7 +535,9 @@ public actor MultiIcecastClient {
                     continuation.yield(.metadataUpdated(label: label))
                 case .error, .statistics, .protocolNegotiated,
                     .bitrateRecommendation, .qualityChanged,
-                    .qualityWarning:
+                    .qualityWarning, .recordingStarted,
+                    .recordingStopped, .recordingFileRotated,
+                    .recordingError:
                     break
                 }
             }

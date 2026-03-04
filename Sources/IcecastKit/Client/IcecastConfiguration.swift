@@ -189,6 +189,12 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     /// backoff strategy, and jitter.
     public var reconnectPolicy: ReconnectPolicy
 
+    /// Recording configuration. `nil` = recording disabled.
+    ///
+    /// When set, the client automatically records audio data to local files
+    /// after each successful ``IcecastClient/send(_:)`` call.
+    public var recording: RecordingConfiguration?
+
     /// Creates a new Icecast configuration.
     ///
     /// - Parameters:
@@ -204,6 +210,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     ///   - adaptiveBitrate: Adaptive bitrate policy. Defaults to `nil` (disabled).
     ///   - credentials: Authentication credentials. Defaults to `nil`.
     ///   - reconnectPolicy: Reconnection policy. Defaults to `.default`.
+    ///   - recording: Recording configuration. Defaults to `nil` (disabled).
     public init(
         host: String,
         port: Int = 8000,
@@ -216,7 +223,8 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         metadataInterval: Int = 8192,
         adaptiveBitrate: AdaptiveBitratePolicy? = nil,
         credentials: IcecastCredentials? = nil,
-        reconnectPolicy: ReconnectPolicy = .default
+        reconnectPolicy: ReconnectPolicy = .default,
+        recording: RecordingConfiguration? = nil
     ) {
         self.host = host
         self.port = port
@@ -230,6 +238,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         self.adaptiveBitrate = adaptiveBitrate
         self.credentials = credentials
         self.reconnectPolicy = reconnectPolicy
+        self.recording = recording
     }
 
     /// Creates a configuration and credentials from a URL string.

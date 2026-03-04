@@ -35,6 +35,18 @@ public enum ConnectionEvent: Sendable {
 
     /// Quality warning when grade transitions to `.poor` or `.critical`.
     case qualityWarning(String)
+
+    /// Recording started at the given file path.
+    case recordingStarted(path: String)
+
+    /// Recording stopped with final statistics.
+    case recordingStopped(statistics: RecordingStatistics)
+
+    /// Recording file rotated to a new path.
+    case recordingFileRotated(newPath: String)
+
+    /// An error occurred during recording.
+    case recordingError(IcecastError)
 }
 
 /// The method used to update metadata.

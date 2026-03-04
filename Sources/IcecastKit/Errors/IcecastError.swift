@@ -118,6 +118,17 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
     /// Bandwidth probe timed out.
     case probeTimeout
 
+    // MARK: - Recording
+
+    /// A recording operation failed.
+    case recordingFailed(reason: String)
+
+    /// File rotation during recording failed.
+    case fileRotationFailed(reason: String)
+
+    /// The recording output directory is not writable or cannot be created.
+    case recordingDirectoryNotWritable(path: String)
+
     // MARK: - Data
 
     /// Sending audio data failed.
@@ -207,6 +218,14 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
             return "Bandwidth probe failed: \(reason)"
         case .probeTimeout:
             return "Bandwidth probe timed out"
+
+        // Recording
+        case .recordingFailed(let reason):
+            return "Recording failed: \(reason)"
+        case .fileRotationFailed(let reason):
+            return "File rotation failed: \(reason)"
+        case .recordingDirectoryNotWritable(let path):
+            return "Recording directory not writable: \(path)"
 
         // Data
         case .sendFailed(let reason):
