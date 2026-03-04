@@ -13,6 +13,20 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 
 ---
 
+## What's New in 0.2.0
+
+- **Adaptive Bitrate** — EWMA-based congestion detection with configurable policies (conservative, responsive, aggressive, custom)
+- **Multi-Destination** — Stream to multiple servers simultaneously with failure isolation
+- **Bandwidth Probing** — Pre-stream upload measurement with format-aware bitrate recommendations
+- **Connection Quality** — Composite score (0.0–1.0) from five weighted metrics with automatic recommendations
+- **Stream Recording** — Local recording with size/time-based file rotation and filename tokens
+- **Relay / Ingest** — Pull audio from existing Icecast/SHOUTcast streams with ICY demuxing
+- **Advanced Authentication** — Digest (RFC 7616), Bearer token, query token, and URL-embedded credentials
+- **Server Presets** — One-line configuration for AzuraCast, LibreTime, Radio.co, Centova Cast, SHOUTcast DNAS, Icecast Official, and Broadcastify
+- **Metrics Export** — Prometheus (OpenMetrics) and StatsD exporters with automatic per-destination labels
+
+---
+
 ## Features
 
 - **Icecast 2.x support** — HTTP PUT (modern, Icecast 2.4+) and legacy SOURCE protocol with automatic fallback for pre-2.4.0 servers
@@ -22,9 +36,18 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 - **Auto-reconnection** — Exponential backoff with configurable jitter, retry limits, max delay caps, and four presets (`.default`, `.aggressive`, `.conservative`, `.none`). Non-recoverable errors (auth failure, mountpoint conflict) skip reconnection entirely
 - **Real-time monitoring** — `AsyncStream`-based event bus with 7 event types (connected, disconnected, reconnecting, metadataUpdated, error, statistics, protocolNegotiated), rolling-window bitrate calculation, and periodic statistics snapshots
 - **Cross-platform** — macOS 14+, iOS 17+, tvOS 17+, watchOS 10+, visionOS 1+, and Linux (Ubuntu 22.04+ with Swift 6.2)
-- **CLI tool** — `icecast-cli` for streaming audio files, testing connections, and querying server info with colored terminal output and structured exit codes
+- **Adaptive bitrate** — EWMA-based congestion detection with three presets and custom policies, per-format quality steps (MP3, AAC, Opus, Vorbis), and `BitrateRecommendation` events
+- **Multi-destination** — `MultiIcecastClient` actor for streaming to multiple servers with independent connections, failure isolation, live add/remove, and aggregated statistics
+- **Bandwidth probing** — `IcecastBandwidthProbe` measures upload bandwidth, latency, and stability before streaming, with format-aware bitrate recommendations
+- **Connection quality** — Composite quality score (0.0–1.0) from five weighted metrics (write latency, throughput, stability, send success, reconnection) with `QualityGrade` and automatic recommendations
+- **Stream recording** — `StreamRecorder` actor writes audio to disk with size/time-based rotation, filename tokens (`{date}`, `{mountpoint}`, `{index}`), and format-aware extensions
+- **Relay / ingest** — `IcecastRelay` actor pulls audio from existing streams with ICY metadata demuxing, content type detection, and relay-to-publish/relay-to-record chains
+- **Advanced auth** — `IcecastAuthentication` enum with Digest (RFC 7616, MD5/SHA-256), Bearer token, query token, SHOUTcast v1/v2, URL-embedded credentials parsing, and credential stripping
+- **Server presets** — `IcecastServerPreset` with 7 one-line configurations (AzuraCast, LibreTime, Radio.co, Centova Cast, SHOUTcast DNAS, Icecast Official, Broadcastify)
+- **Metrics export** — `IcecastMetricsExporter` protocol with `PrometheusExporter` (OpenMetrics, 8 metrics, `onRender` callback) and `StatsDExporter` (UDP POSIX), automatic labels, periodic export
+- **CLI tool** — `icecast-cli` for streaming, bandwidth probing, relaying, connection testing, and server diagnostics with colored terminal output and structured exit codes
 - **Swift 6.2 strict concurrency** — Actors for stateful types, `Sendable` everywhere, `async`/`await` throughout, zero `@unchecked Sendable` or `nonisolated(unsafe)`
-- **Zero core dependencies** — The `IcecastKit` target has no third-party dependencies. Only `swift-argument-parser` for the CLI
+- **Zero core dependencies** — The `IcecastKit` target has no third-party dependencies. Only `swift-argument-parser` for the CLI and `swift-crypto` conditionally on Linux
 
 ---
 
@@ -36,6 +59,7 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 | ICY Metadata Protocol | — | [SHOUTcast ICY](https://cast.readme.io/docs/icy) |
 | SHOUTcast DNAS | 2.6.1 | [SHOUTcast Docs](https://cast.readme.io/docs) |
 | HTTP Basic Auth | RFC 7617 | [RFC 7617](https://datatracker.ietf.org/doc/html/rfc7617) |
+| HTTP Digest Auth | RFC 7616 | [RFC 7616](https://datatracker.ietf.org/doc/html/rfc7616) |
 
 ---
 
@@ -455,6 +479,210 @@ let stats = await client.statistics
 // stats.bytesSent == 1408 (128 + 5 x 256)
 ```
 
+### Adaptive Bitrate
+
+Monitor network conditions in real time and receive bitrate recommendations. Three presets (conservative, responsive, aggressive) plus full custom configuration:
+
+```swift
+let config = IcecastConfiguration(
+    host: "radio.example.com",
+    mountpoint: "/live.mp3",
+    adaptiveBitrate: .conservative
+)
+let client = IcecastClient(configuration: config, credentials: credentials)
+try await client.connect()
+
+for await event in client.events {
+    if case .bitrateRecommendation(let rec) = event {
+        print("\(rec.direction): \(rec.recommendedBitrate) bps (\(rec.reason))")
+    }
+}
+```
+
+The `NetworkConditionMonitor` detects congestion via EWMA latency spikes, RTT spikes, and bandwidth slowdowns. `AudioQualityStep` provides per-format bitrate tiers (MP3: 7 steps from 32–320 kbps, plus AAC, Opus, Vorbis).
+
+### Multi-Destination Publishing
+
+Stream to multiple servers simultaneously with independent failure isolation:
+
+```swift
+let multi = MultiIcecastClient()
+
+try await multi.addDestination("primary", configuration: IcecastConfiguration(
+    host: "radio1.example.com", mountpoint: "/live.mp3",
+    credentials: IcecastCredentials(password: "secret1")
+))
+try await multi.addDestination("backup", configuration: IcecastConfiguration(
+    host: "backup.example.com", mountpoint: "/live.mp3",
+    credentials: IcecastCredentials(password: "secret2")
+))
+
+try await multi.connectAll()
+try await multi.send(audioData)
+
+let stats = await multi.statistics
+print("Connected: \(stats.connectedCount)/\(stats.totalCount)")
+```
+
+Add or remove destinations live while streaming. Each destination has its own reconnection policy.
+
+### Bandwidth Probing
+
+Measure upload bandwidth and latency before committing to a live stream:
+
+```swift
+let probe = IcecastBandwidthProbe()
+let result = try await probe.measure(
+    host: "radio.example.com",
+    mountpoint: "/probe",
+    credentials: IcecastCredentials(password: "hackme"),
+    contentType: .mp3,
+    duration: 5.0
+)
+print("Bandwidth: \(result.uploadBandwidth) bps")
+print("Latency: \(result.averageWriteLatency) ms (\(result.latencyClass))")
+print("Stability: \(result.stabilityScore)/100")
+print("Recommended: \(result.recommendedBitrate) bps")
+```
+
+### Connection Quality
+
+Real-time quality scoring from five weighted metrics (write latency 30%, throughput 25%, stability 20%, send success 15%, reconnection 10%):
+
+```swift
+let quality = ConnectionQuality.from(statistics: stats)
+print("\(quality.grade.label): \(quality.score)")
+// "Excellent: 0.95"
+
+// Grades: .excellent (0.91+), .good (0.71+), .fair (0.51+), .poor (0.31+), .critical (<0.31)
+// QualityGrade is Comparable: .excellent > .good > .fair > .poor > .critical
+
+let engine = QualityRecommendationEngine()
+if let rec = engine.recommendation(for: quality) {
+    print("Recommendation: \(rec)")
+}
+```
+
+Quality events arrive via the event stream: `.qualityChanged(_:)` and `.qualityWarning(_:)`.
+
+### Stream Recording
+
+Record streamed audio to disk with automatic file rotation:
+
+```swift
+let recorder = StreamRecorder(configuration: RecordingConfiguration(
+    directory: "/recordings",
+    contentType: .mp3,
+    maxFileSize: 50_000_000,  // Rotate at 50 MB
+    filenamePattern: "{mountpoint}_{index}"
+))
+try await recorder.start(mountpoint: "/live.mp3")
+try await recorder.write(audioData)
+let stats = try await recorder.stop()
+print("Files created: \(stats.filesCreated)")
+```
+
+Integrates with `IcecastClient` via `IcecastConfiguration.recording` for auto-start recording. Events: `.recordingStarted`, `.recordingStopped`, `.recordingFileRotated`.
+
+### Relay / Ingest
+
+Pull audio from an existing Icecast/SHOUTcast stream:
+
+```swift
+let relay = IcecastRelay(configuration: IcecastRelayConfiguration(
+    sourceURL: "http://radio.example.com:8000/live.mp3"
+))
+try await relay.connect()
+
+for await chunk in relay.audioStream {
+    print("\(chunk.data.count) bytes, offset \(chunk.byteOffset)")
+    if let meta = chunk.metadata {
+        print("Now playing: \(meta.streamTitle ?? "unknown")")
+    }
+}
+```
+
+Chain with `IcecastClient` for relay-to-publish, or with `StreamRecorder` for relay-to-record.
+
+### Advanced Authentication
+
+Six authentication methods via `IcecastAuthentication`:
+
+```swift
+// Digest (RFC 7616) — challenge-response, password never on the wire
+let config = IcecastConfiguration(
+    host: "radio.example.com", mountpoint: "/live.mp3",
+    authentication: .digest(username: "source", password: "hackme")
+)
+
+// Bearer token
+let bearer = IcecastConfiguration(
+    host: "radio.example.com", mountpoint: "/live.mp3",
+    authentication: .bearer(token: "my-api-token-12345")
+)
+
+// URL-embedded credentials
+let auth = IcecastAuthentication.fromURL("http://admin:secret@radio.example.com:8000/live.mp3")
+// .basic(username: "admin", password: "secret")
+
+let clean = IcecastAuthentication.stripCredentials(from: "http://admin:secret@radio.example.com/live.mp3")
+// "http://radio.example.com/live.mp3"
+```
+
+| Type | Description |
+|------|-------------|
+| `.basic` | HTTP Basic (RFC 7617) |
+| `.digest` | HTTP Digest (RFC 7616, MD5/SHA-256) |
+| `.bearer` | Bearer token |
+| `.queryToken` | Token in URL query string |
+| `.shoutcast` | SHOUTcast v1 password-only |
+| `.shoutcastV2` | SHOUTcast v2 with stream ID |
+
+### Server Presets
+
+One-line configuration for 7 popular platforms:
+
+```swift
+let config = IcecastServerPreset.azuracast.configuration(
+    host: "mystation.azuracast.com",
+    password: "my-source-password"
+)
+// Preconfigured: port 8000, /radio.mp3, PUT protocol, Basic auth
+
+let client = IcecastClient(
+    configuration: config,
+    credentials: config.credentials ?? IcecastCredentials(password: "fallback")
+)
+```
+
+| Preset | Port | Auth | Protocol |
+|--------|------|------|----------|
+| `.azuracast` | 8000 | Basic | Icecast PUT |
+| `.libretime` | 8000 | Basic | Icecast PUT |
+| `.radioCo` | 8000 | Bearer | Icecast PUT |
+| `.centovaCast` | 8000 | SHOUTcast v2 | SHOUTcast v2 |
+| `.shoutcastDNAS` | 8000 | Password | SHOUTcast v1 |
+| `.icecastOfficial` | 8000 | Basic | Icecast PUT |
+| `.broadcastify` | 80 | Bearer | Icecast PUT |
+
+### Metrics Export
+
+Export streaming metrics to Prometheus or StatsD:
+
+```swift
+// Prometheus — OpenMetrics format with 8 metrics
+let exporter = PrometheusExporter { output in
+    // Serve at /metrics endpoint
+}
+await client.setMetricsExporter(exporter, interval: 10.0)
+
+// StatsD — UDP datagrams
+let statsD = StatsDExporter(host: "127.0.0.1", port: 8125, prefix: "radio")
+await client.setMetricsExporter(statsD, interval: 10.0)
+```
+
+Exported metrics: `bytes_sent`, `stream_duration_seconds`, `current_bitrate`, `metadata_updates_total`, `reconnections_total`, `write_latency_ms`, `peak_bitrate`, `connection_quality_score`. Labels are auto-generated from configuration (mountpoint, server) with consumer overrides.
+
 ---
 
 ## CLI
@@ -472,7 +700,9 @@ cp .build/release/icecast-cli /usr/local/bin/
 
 | Command | Description |
 |---------|-------------|
-| `stream` | Stream an audio file to an Icecast/SHOUTcast server with optional looping and auto-reconnect |
+| `stream` | Stream an audio file with optional multi-destination, auth types, looping, and auto-reconnect |
+| `probe` | Measure upload bandwidth and latency to a server |
+| `relay` | Pull audio from a source and optionally re-publish or record |
 | `test-connection` | Test TCP connectivity, protocol negotiation, and authentication, then disconnect |
 | `info` | Query global server stats or per-mountpoint stats via the admin API |
 
@@ -496,6 +726,23 @@ icecast-cli stream music.mp3 --password hackme --loop --protocol shoutcast-v1
 
 # Stream with SHOUTcast v2 multi-stream (stream ID 3)
 icecast-cli stream music.mp3 --password hackme --protocol shoutcast-v2:3
+
+# Stream to multiple destinations
+icecast-cli stream music.mp3 \
+    --dest "primary:radio1.example.com:8000:/live.mp3:secret1" \
+    --dest "backup:backup.example.com:8000:/live.mp3:secret2"
+
+# Stream with digest authentication
+icecast-cli stream music.mp3 --host radio.example.com --password hackme --auth-type digest
+
+# Stream with bearer token
+icecast-cli stream music.mp3 --host radio.example.com --auth-type bearer --token my-api-token
+
+# Probe bandwidth before streaming
+icecast-cli probe --host radio.example.com --port 8000 --password hackme --duration 10
+
+# Relay and record a stream
+icecast-cli relay --source http://radio.example.com:8000/live.mp3 --record /recordings/ --duration 3600
 ```
 
 See the [CLI Reference](https://atelier-socle.github.io/swift-icecast-kit/documentation/icecastkit/clireference) for the full command documentation with all options and flags.
@@ -512,9 +759,18 @@ Sources/
 │   ├── Metadata/                # ICY metadata encode/decode, interleaver, admin API, stats
 │   ├── Transport/               # TCP transport (NWConnection / POSIX sockets)
 │   ├── Monitoring/              # ConnectionMonitor, events, statistics
-│   ├── Errors/                  # Typed error hierarchy (27 cases across 7 categories)
+│   ├── AdaptiveBitrate/         # NetworkConditionMonitor, policies, quality steps
+│   ├── MultiClient/             # MultiIcecastClient, destinations, aggregated stats
+│   ├── Probe/                   # IcecastBandwidthProbe, probe result, target quality
+│   ├── Quality/                 # ConnectionQuality, QualityGrade, recommendations
+│   ├── Recording/               # StreamRecorder, rotation policy, recording stats
+│   ├── Relay/                   # IcecastRelay, AudioChunk, ICYStreamDemuxer
+│   ├── Authentication/          # IcecastAuthentication, DigestAuth, Bearer, QueryToken
+│   ├── ServerPresets/           # IcecastServerPreset, PresetAuthStyle
+│   ├── Metrics/                 # Exporters (Prometheus, StatsD), protocol
+│   ├── Errors/                  # Typed error hierarchy
 │   └── Extensions/              # Data + String helpers
-├── IcecastKitCommands/          # CLI command implementations (stream, test-connection, info)
+├── IcecastKitCommands/          # CLI commands (stream, probe, relay, test-connection, info)
 └── IcecastKitCLI/               # CLI entry point (@main)
 ```
 

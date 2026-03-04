@@ -8,7 +8,7 @@ Use the mock server for manual testing and run the unit test suite.
 
 ## Overview
 
-IcecastKit includes a Python mock server for manual CLI testing and a comprehensive unit test suite with 604 tests. This guide covers setting up the mock server, running test scenarios, and measuring code coverage.
+IcecastKit includes a Python mock server for manual CLI testing and a comprehensive unit test suite. This guide covers setting up the mock server, running test scenarios, and measuring code coverage.
 
 ### Mock Icecast Server
 
@@ -134,7 +134,7 @@ Run the full test suite:
 swift test
 ```
 
-The test suite uses Swift Testing (not XCTest) with 604 tests across 41 suites covering the complete API surface.
+The test suite uses Swift Testing (not XCTest) covering the complete API surface.
 
 ### Code Coverage
 

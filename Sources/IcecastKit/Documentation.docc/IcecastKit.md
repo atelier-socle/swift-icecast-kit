@@ -33,8 +33,17 @@ await client.disconnect()
 - **Admin API** — Server-side metadata updates, server stats, and mountpoint stats
 - **Auto-reconnect** — Exponential backoff with configurable jitter and retry policies
 - **AsyncStream monitoring** — Real-time events, statistics, and bitrate tracking
+- **Adaptive bitrate** — EWMA-based congestion detection with configurable policies
+- **Multi-destination** — Stream to multiple servers with failure isolation
+- **Bandwidth probing** — Pre-stream upload measurement with quality recommendations
+- **Connection quality** — Composite score (0.0–1.0) with five weighted metrics
+- **Stream recording** — Local recording with size/time-based file rotation
+- **Relay / ingest** — Pull audio from existing streams with ICY demuxing
+- **Advanced auth** — Digest (RFC 7616), Bearer token, query token, URL-embedded
+- **Server presets** — One-line config for AzuraCast, LibreTime, Radio.co, and more
+- **Metrics export** — Prometheus (OpenMetrics) and StatsD exporters
 - **Cross-platform** — macOS 14+, iOS 17+, tvOS 17+, watchOS 10+, visionOS 1+, Linux
-- **CLI tool** — `icecast-cli` for streaming, connection testing, and server diagnostics
+- **CLI tool** — `icecast-cli` for streaming, probing, relaying, and diagnostics
 
 ### Standards
 
@@ -44,6 +53,7 @@ await client.disconnect()
 | ICY Metadata Protocol | — | [SHOUTcast ICY](https://cast.readme.io/docs/icy) |
 | SHOUTcast DNAS | 2.6.1 | [SHOUTcast Docs](https://cast.readme.io/docs) |
 | HTTP Basic Auth | RFC 7617 | [RFC 7617](https://datatracker.ietf.org/doc/html/rfc7617) |
+| HTTP Digest Auth | RFC 7616 | [RFC 7616](https://datatracker.ietf.org/doc/html/rfc7616) |
 
 ## Topics
 
@@ -55,6 +65,42 @@ await client.disconnect()
 ### Metadata
 
 - <doc:MetadataGuide>
+
+### Adaptive Bitrate
+
+- <doc:AdaptiveBitrateGuide>
+
+### Multi-Destination
+
+- <doc:MultiDestinationGuide>
+
+### Bandwidth Probing
+
+- <doc:BandwidthProbingGuide>
+
+### Connection Quality
+
+- <doc:ConnectionQualityGuide>
+
+### Stream Recording
+
+- <doc:RecordingGuide>
+
+### Relay / Ingest
+
+- <doc:RelayGuide>
+
+### Authentication
+
+- <doc:AuthenticationGuide>
+
+### Server Presets
+
+- <doc:ServerPresetsGuide>
+
+### Metrics Export
+
+- <doc:MetricsExportGuide>
 
 ### Protocol Support
 
@@ -126,6 +172,64 @@ await client.disconnect()
 ### Errors
 
 - ``IcecastError``
+
+### Adaptive Bitrate
+
+- ``NetworkConditionMonitor``
+- ``AdaptiveBitratePolicy``
+- ``AdaptiveBitrateConfiguration``
+- ``AudioQualityStep``
+- ``BitrateRecommendation``
+
+### Multi-Destination
+
+- ``MultiIcecastClient``
+- ``IcecastDestination``
+- ``MultiIcecastEvent``
+- ``MultiIcecastStatistics``
+
+### Bandwidth Probing
+
+- ``IcecastBandwidthProbe``
+- ``IcecastProbeResult``
+- ``ProbeTargetQuality``
+
+### Connection Quality
+
+- ``ConnectionQuality``
+- ``QualityGrade``
+- ``QualityRecommendationEngine``
+
+### Recording
+
+- ``StreamRecorder``
+- ``RecordingConfiguration``
+- ``RecordingStatistics``
+- ``FileRotationPolicy``
+- ``RecordingFormat``
+
+### Relay
+
+- ``IcecastRelay``
+- ``IcecastRelayConfiguration``
+- ``AudioChunk``
+- ``RelayEvent``
+
+### Authentication
+
+- ``IcecastAuthentication``
+
+### Server Presets
+
+- ``IcecastServerPreset``
+- ``PresetAuthStyle``
+
+### Metrics
+
+- ``IcecastMetricsExporter``
+- ``MetricsExportConfiguration``
+- ``PrometheusExporter``
+- ``StatsDExporter``
 
 ### Transport
 

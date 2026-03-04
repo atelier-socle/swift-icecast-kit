@@ -24,6 +24,8 @@ cp .build/release/icecast-cli /usr/local/bin/
 | Command | Description |
 |---------|-------------|
 | `stream` | Stream an audio file to an Icecast/SHOUTcast server |
+| `probe` | Measure upload bandwidth and latency |
+| `relay` | Pull audio from an existing stream |
 | `test-connection` | Test connectivity and authentication |
 | `info` | Display server and mountpoint information |
 
@@ -69,6 +71,58 @@ icecast-cli stream <file> [options]
 | `--tls` | Use TLS/HTTPS |
 | `--no-color` | Disable colored output |
 
+**Multi-Destination Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--dest` | Add destination as `label:host:port:mountpoint:password` (repeatable) |
+
+**Authentication Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--auth-type` | `basic` | Authentication type: `basic`, `digest`, `bearer`, `query-token` |
+| `--token` | none | Bearer token (when `--auth-type bearer`) |
+
+### probe
+
+Measure upload bandwidth and latency to a streaming server.
+
+```bash
+icecast-cli probe [options]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--host` | `localhost` | Server hostname |
+| `--port` | `8000` | Server port |
+| `--mountpoint` | `/probe` | Mountpoint for probe |
+| `--username` | `source` | Auth username |
+| `--password` | (required) | Auth password |
+| `--duration` | `5` | Probe duration in seconds (2–30) |
+| `--content-type` | `mp3` | Audio type: `mp3`, `aac`, `ogg-vorbis`, `ogg-opus` |
+| `--no-color` | `false` | Disable colored output |
+
+### relay
+
+Pull audio from an existing stream and optionally re-publish or record.
+
+```bash
+icecast-cli relay [options]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--source` | (required) | Source stream URL |
+| `--dest` | none | Re-publish destination `label:host:port:mountpoint:password` (repeatable) |
+| `--record` | none | Recording output directory |
+| `--duration` | unlimited | Maximum relay duration in seconds |
+| `--no-color` | `false` | Disable colored output |
+
 ### test-connection
 
 Test connectivity and authentication to a streaming server. Connects, negotiates the protocol, then immediately disconnects.
@@ -85,8 +139,10 @@ icecast-cli test-connection [options]
 | `--port` | `8000` | Server port |
 | `--mountpoint` | `/stream` | Mountpoint path |
 | `--username` | `source` | Auth username |
-| `--password` | (required) | Auth password |
+| `--password` | none | Auth password (required for basic/digest) |
 | `--protocol` | `auto` | Protocol variant |
+| `--auth-type` | `basic` | Authentication type: `basic`, `digest`, `bearer`, `query-token` |
+| `--token` | none | Token for `--auth-type bearer` or `query-token` |
 | `--tls` | `false` | Use TLS/HTTPS |
 | `--no-color` | `false` | Disable colored output |
 
@@ -155,6 +211,38 @@ Stream with SHOUTcast v2 multi-stream:
 
 ```bash
 icecast-cli stream music.mp3 --password hackme --protocol shoutcast-v2:3
+```
+
+Stream to multiple destinations:
+
+```bash
+icecast-cli stream music.mp3 \
+    --dest "primary:radio1.example.com:8000:/live.mp3:secret1" \
+    --dest "backup:backup.example.com:8000:/live.mp3:secret2"
+```
+
+Stream with digest authentication:
+
+```bash
+icecast-cli stream music.mp3 --host radio.example.com --password hackme --auth-type digest
+```
+
+Stream with bearer token:
+
+```bash
+icecast-cli stream music.mp3 --host radio.example.com --auth-type bearer --token my-api-token
+```
+
+Probe bandwidth before streaming:
+
+```bash
+icecast-cli probe --host radio.example.com --port 8000 --password hackme --duration 10
+```
+
+Relay and record a stream:
+
+```bash
+icecast-cli relay --source http://radio.example.com:8000/live.mp3 --record /recordings/ --duration 3600
 ```
 
 ## Next Steps

@@ -103,6 +103,20 @@ Supported formats:
 | `.ogg`, `.oga` | `application/ogg` |
 | `.opus` | `audio/ogg` |
 
+### What's New in 0.2.0
+
+IcecastKit 0.2.0 adds nine major features:
+
+- **Adaptive Bitrate** — Automatic bitrate adjustment based on network conditions (<doc:AdaptiveBitrateGuide>)
+- **Multi-Destination** — Stream to multiple servers simultaneously (<doc:MultiDestinationGuide>)
+- **Bandwidth Probing** — Measure upload bandwidth before streaming (<doc:BandwidthProbingGuide>)
+- **Connection Quality** — Real-time quality scoring and recommendations (<doc:ConnectionQualityGuide>)
+- **Stream Recording** — Record streamed audio with file rotation (<doc:RecordingGuide>)
+- **Relay / Ingest** — Pull audio from existing streams (<doc:RelayGuide>)
+- **Advanced Authentication** — Digest, Bearer, Query Token auth (<doc:AuthenticationGuide>)
+- **Server Presets** — One-line configuration for 7 platforms (<doc:ServerPresetsGuide>)
+- **Metrics Export** — Prometheus and StatsD integration (<doc:MetricsExportGuide>)
+
 ## Next Steps
 
 - <doc:StreamingGuide> — Complete streaming configuration and lifecycle

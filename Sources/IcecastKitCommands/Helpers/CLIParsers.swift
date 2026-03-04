@@ -128,14 +128,14 @@ public func parseContentType(_ string: String) throws -> AudioContentType {
     }
 }
 
-/// Resolve an ``IcecastAuthentication`` from CLI `--auth-type` and `--token` options.
+/// Resolve an `IcecastAuthentication` from CLI `--auth-type` and `--token` options.
 ///
 /// - Parameters:
 ///   - authType: The auth type string (basic, digest, bearer, query-token).
 ///   - username: The username (used for basic/digest).
 ///   - password: The password (used for basic/digest).
 ///   - token: The token value (used for bearer/query-token).
-/// - Returns: The resolved ``IcecastAuthentication``.
+/// - Returns: The resolved `IcecastAuthentication`.
 /// - Throws: ``CLIParseError`` if the auth type is invalid or required options are missing.
 public func resolveAuthentication(
     authType: String,
