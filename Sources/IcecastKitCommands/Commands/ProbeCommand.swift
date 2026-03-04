@@ -41,7 +41,7 @@ public struct ProbeCommand: AsyncParsableCommand {
     /// Audio content type.
     @Option(
         name: .long,
-        help: "Audio type: mp3, aac, ogg-vorbis, ogg-opus (default: mp3)"
+        help: "Audio type: mp3, aac, ogg-vorbis, ogg-opus"
     )
     var contentType: String = "mp3"
 

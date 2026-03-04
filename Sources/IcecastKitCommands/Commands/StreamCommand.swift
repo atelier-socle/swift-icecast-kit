@@ -160,6 +160,72 @@ public struct StreamCommand: AsyncParsableCommand {
         let multi = MultiIcecastClient()
         let policy: ReconnectPolicy = noReconnect ? .none : .default
 
+        try await addPrimaryDestination(
+            to: multi, reader: reader, policy: policy, color: color
+        )
+        try await addExtraDestinations(
+            to: multi, reader: reader, policy: policy, color: color
+        )
+
+        try await multi.connectAll()
+        let destCount = await multi.statistics.totalCount
+        print(
+            color.success(
+                "Connected to \(destCount) destination\(destCount == 1 ? "" : "s")"
+            ))
+
+        if let title {
+            await multi.updateMetadata(ICYMetadata(streamTitle: title))
+        }
+
+        let pacingBitrate = resolveBitrate(reader: reader)
+        try await multiStreamLoop(
+            multi: multi, reader: &reader,
+            pacingBitrate: pacingBitrate, progress: progress
+        )
+
+        await multi.disconnectAll()
+        let stats = await multi.statistics
+        print(
+            "\n"
+                + color.success(
+                    "✓ Stream complete. Sent \(ProgressDisplay.formatBytes(stats.aggregated.bytesSent))"
+                ))
+    }
+
+    private func addPrimaryDestination(
+        to multi: MultiIcecastClient,
+        reader: AudioFileReader,
+        policy: ReconnectPolicy,
+        color: ColorOutput
+    ) async throws {
+        guard let password, !password.isEmpty else { return }
+        let mode = try parseProtocolMode(self.protocol)
+        let audioType: AudioContentType? = try contentType.map {
+            try parseContentType($0)
+        }
+        let config = IcecastConfiguration(
+            host: host,
+            port: port,
+            mountpoint: mountpoint,
+            useTLS: tls,
+            contentType: audioType ?? reader.contentType,
+            protocolMode: mode,
+            credentials: IcecastCredentials(
+                username: username, password: password
+            ),
+            reconnectPolicy: policy
+        )
+        try await multi.addDestination("primary", configuration: config)
+        print(color.info("  + primary: \(host):\(port)\(mountpoint)"))
+    }
+
+    private func addExtraDestinations(
+        to multi: MultiIcecastClient,
+        reader: AudioFileReader,
+        policy: ReconnectPolicy,
+        color: ColorOutput
+    ) async throws {
         for destString in dest {
             let parsed = try parseDestination(destString)
             let mode: ProtocolMode
@@ -185,39 +251,13 @@ public struct StreamCommand: AsyncParsableCommand {
                 reconnectPolicy: policy
             )
             try await multi.addDestination(
-                parsed.label,
-                configuration: config
+                parsed.label, configuration: config
             )
             print(
                 color.info(
                     "  + \(parsed.label): \(parsed.host):\(parsed.port)\(parsed.mountpoint)"
                 ))
         }
-
-        try await multi.connectAll()
-        let destCount = dest.count
-        print(
-            color.success(
-                "Connected to \(destCount) destination\(destCount == 1 ? "" : "s")"
-            ))
-
-        if let title {
-            await multi.updateMetadata(ICYMetadata(streamTitle: title))
-        }
-
-        let pacingBitrate = resolveBitrate(reader: reader)
-        try await multiStreamLoop(
-            multi: multi, reader: &reader,
-            pacingBitrate: pacingBitrate, progress: progress
-        )
-
-        await multi.disconnectAll()
-        let stats = await multi.statistics
-        print(
-            "\n"
-                + color.success(
-                    "✓ Stream complete. Sent \(ProgressDisplay.formatBytes(stats.aggregated.bytesSent))"
-                ))
     }
 
     private func multiStreamLoop(
@@ -286,6 +326,19 @@ public struct StreamCommand: AsyncParsableCommand {
         progress: ProgressDisplay,
         color: ColorOutput
     ) async throws {
+        let mode = try parseProtocolMode(self.protocol)
+        if case .shoutcastV1 = mode {
+            print(
+                color.info(
+                    "SHOUTcast v1: connecting to source port \(port + 1) (DNAS spec)"
+                ))
+        } else if case .shoutcastV2 = mode {
+            print(
+                color.info(
+                    "SHOUTcast v2: connecting to source port \(port + 1) (DNAS spec)"
+                ))
+        }
+
         try await client.connect()
         print(
             progress.formatConnected(

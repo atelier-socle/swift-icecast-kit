@@ -54,11 +54,23 @@ public struct RelayCommand: AsyncParsableCommand {
         let relay = try await connectRelay(color: color)
         let clients = await connectDestinations(color: color)
 
+        // Set up recorder if --record is specified
+        var recorder: StreamRecorder?
         if let recordDir = record {
+            let contentType = await relay.detectedContentType ?? .mp3
+            let config = RecordingConfiguration(
+                directory: recordDir, contentType: contentType
+            )
+            let rec = StreamRecorder(configuration: config)
+            try await rec.start()
+            recorder = rec
             print(color.info("Recording to \(recordDir)"))
         }
 
-        await relayLoop(relay: relay, clients: clients)
+        // relayLoop guarantees recorder.stop() in all exit paths
+        await relayLoop(
+            relay: relay, clients: clients, recorder: recorder
+        )
 
         for client in clients {
             await client.disconnect()
@@ -68,6 +80,13 @@ public struct RelayCommand: AsyncParsableCommand {
         let received = await relay.bytesReceived
         print(color.success("Relay stopped."))
         print("  Bytes received: \(received)")
+        if let rec = recorder {
+            let stats = await rec.statistics
+            print(
+                "  Recorded: \(stats.bytesWritten) bytes, "
+                    + "\(stats.filesCreated) file(s)"
+            )
+        }
     }
 
     // MARK: - Helpers
@@ -124,17 +143,24 @@ public struct RelayCommand: AsyncParsableCommand {
     }
 
     private func relayLoop(
-        relay: IcecastRelay, clients: [IcecastClient]
+        relay: IcecastRelay,
+        clients: [IcecastClient],
+        recorder: StreamRecorder?
     ) async {
         let startTime = Date()
         for await chunk in relay.audioStream {
             for client in clients {
                 try? await client.send(chunk.data)
             }
+            try? await recorder?.write(chunk.data)
             if let seconds = duration {
                 let elapsed = Date().timeIntervalSince(startTime)
                 if elapsed >= seconds { break }
             }
+        }
+        // Stop recorder in all exit paths: stream ended, duration elapsed
+        if let rec = recorder {
+            _ = try? await rec.stop()
         }
     }
 }

@@ -123,110 +123,35 @@ class MockIcecastServer:
     def handle_client(self, client, addr):
         """Route an incoming connection to the appropriate handler."""
         try:
-            # Read initial request
-            data = b""
-            while b"\r\n\r\n" not in data:
+            # Read first line to distinguish HTTP from SHOUTcast v1.
+            # SHOUTcast v1 sends only "password\r\n" (no \r\n\r\n),
+            # while HTTP methods (PUT, SOURCE, GET) send full headers
+            # terminated by \r\n\r\n.
+            first_data = b""
+            while b"\r\n" not in first_data:
                 chunk = client.recv(4096)
                 if not chunk:
                     return
-                data += chunk
+                first_data += chunk
 
-            request = data.split(b"\r\n\r\n")[0].decode("utf-8", errors="replace")
-            lines = request.split("\r\n")
-            method_line = lines[0] if lines else ""
-            headers = {}
-            for line in lines[1:]:
-                if ":" in line:
-                    k, v = line.split(":", 1)
-                    headers[k.strip().lower()] = v.strip()
+            first_line = first_data.split(b"\r\n")[0].decode(
+                "utf-8", errors="replace"
+            )
+            http_methods = ("PUT ", "SOURCE ", "GET ", "POST ", "HEAD ")
+            is_http = any(first_line.startswith(m) for m in http_methods)
 
-            print(f"{DIM}  Request: {method_line}{RESET}")
-            for k, v in headers.items():
-                if k in ("authorization", "content-type", "ice-name", "user-agent"):
-                    print(f"{DIM}  {k}: {v}{RESET}")
-
-            # --- Admin API ---
-            if method_line.startswith("GET /admin/"):
-                self.handle_admin(client, method_line, headers)
-                return
-
-            # --- Relay / Listener GET ---
-            if self.serve_relay and method_line.startswith("GET "):
-                self.handle_relay_get(client, method_line, headers)
-                return
-
-            # --- Bearer token validation ---
-            if self.bearer_token:
-                auth_header = headers.get("authorization", "")
-                if not auth_header.startswith("Bearer "):
-                    client.sendall(b"HTTP/1.1 401 Unauthorized\r\n\r\n")
-                    self.bearer_rejected += 1
-                    print(f"{RED}  → 401 Unauthorized (no Bearer token){RESET}")
-                    client.close()
-                    return
-                received_token = auth_header[len("Bearer "):]
-                if received_token != self.bearer_token:
-                    client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
-                    self.bearer_rejected += 1
-                    print(f"{RED}  → 403 Forbidden (wrong token: "
-                          f"\"{received_token}\"){RESET}")
-                    client.close()
-                    return
-                self.bearer_accepted += 1
-                print(f"{GREEN}  ✓ Bearer token accepted{RESET}")
-
-            # --- Fail modes ---
-            if self.fail_mode == "401":
-                client.sendall(b"HTTP/1.1 401 Unauthorized\r\n\r\n")
-                print(f"{RED}  → 401 Unauthorized{RESET}")
-                client.close()
-                return
-            if self.fail_mode == "403-mount-in-use":
-                client.sendall(b"HTTP/1.1 403 Mountpoint in use\r\n\r\n")
-                print(f"{RED}  → 403 Mountpoint in use{RESET}")
-                client.close()
-                return
-            if self.fail_mode == "500":
-                client.sendall(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
-                print(f"{RED}  → 500 Internal Server Error{RESET}")
-                client.close()
-                return
-            if self.fail_mode == "digest-challenge":
-                if self._handle_digest_challenge(client, headers, reject_always=False):
-                    return
-            if self.fail_mode == "digest-always-reject":
-                if self._handle_digest_challenge(client, headers, reject_always=True):
-                    return
-
-            # --- Icecast PUT ---
-            if method_line.startswith("PUT "):
-                client.sendall(b"HTTP/1.1 200 OK\r\n\r\n")
-                print(f"{GREEN}  → 200 OK (Icecast PUT){RESET}")
-                self.receive_audio(client)
-
-            # --- Icecast SOURCE ---
-            elif method_line.startswith("SOURCE "):
-                client.sendall(b"HTTP/1.0 200 OK\r\n\r\n")
-                print(f"{GREEN}  → 200 OK (Icecast SOURCE){RESET}")
-                self.receive_audio(client)
-
-            # --- SHOUTcast (password line) ---
-            else:
-                # Could be shoutcast password
-                password_line = method_line.strip()
-                print(f"{DIM}  SHOUTcast password received: {password_line}{RESET}")
-                client.sendall(b"OK2\r\nicy-caps:11\r\n\r\n")
-                print(f"{GREEN}  → OK2 (SHOUTcast){RESET}")
-                # Read headers after auth
-                header_data = b""
-                while b"\r\n\r\n" not in header_data:
+            if is_http:
+                # HTTP request — continue reading until \r\n\r\n
+                data = first_data
+                while b"\r\n\r\n" not in data:
                     chunk = client.recv(4096)
                     if not chunk:
                         return
-                    header_data += chunk
-                sc_headers = header_data.decode("utf-8", errors="replace")
-                print(f"{DIM}  SHOUTcast headers received ({len(sc_headers)} bytes){RESET}")
-                self.receive_audio(client)
+                    data += chunk
+                self._handle_http_request(client, data)
+            else:
+                # SHOUTcast v1 — first line is the password
+                self._handle_shoutcast_v1(client, first_line)
 
         except Exception as e:
             print(f"{RED}  Error: {e}{RESET}")
@@ -235,6 +160,107 @@ class MockIcecastServer:
                 client.close()
             except Exception:
                 pass
+
+    def _handle_http_request(self, client, data):
+        """Handle an HTTP-based request (Icecast PUT/SOURCE, admin, relay)."""
+        request = data.split(b"\r\n\r\n")[0].decode("utf-8", errors="replace")
+        lines = request.split("\r\n")
+        method_line = lines[0] if lines else ""
+        headers = {}
+        for line in lines[1:]:
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers[k.strip().lower()] = v.strip()
+
+        print(f"{DIM}  Request: {method_line}{RESET}")
+        for k, v in headers.items():
+            if k in ("authorization", "content-type", "ice-name", "user-agent"):
+                print(f"{DIM}  {k}: {v}{RESET}")
+
+        # --- Admin API ---
+        if method_line.startswith("GET /admin/"):
+            self.handle_admin(client, method_line, headers)
+            return
+
+        # --- Relay / Listener GET ---
+        if self.serve_relay and method_line.startswith("GET "):
+            self.handle_relay_get(client, method_line, headers)
+            return
+
+        # --- Bearer token validation ---
+        if self.bearer_token:
+            auth_header = headers.get("authorization", "")
+            if not auth_header.startswith("Bearer "):
+                client.sendall(b"HTTP/1.1 401 Unauthorized\r\n\r\n")
+                self.bearer_rejected += 1
+                print(f"{RED}  → 401 Unauthorized (no Bearer token){RESET}")
+                client.close()
+                return
+            received_token = auth_header[len("Bearer "):]
+            if received_token != self.bearer_token:
+                client.sendall(b"HTTP/1.1 403 Forbidden\r\n\r\n")
+                self.bearer_rejected += 1
+                print(f"{RED}  → 403 Forbidden (wrong token: "
+                      f"\"{received_token}\"){RESET}")
+                client.close()
+                return
+            self.bearer_accepted += 1
+            print(f"{GREEN}  ✓ Bearer token accepted{RESET}")
+
+        # --- Fail modes ---
+        if self.fail_mode == "401":
+            client.sendall(b"HTTP/1.1 401 Unauthorized\r\n\r\n")
+            print(f"{RED}  → 401 Unauthorized{RESET}")
+            client.close()
+            return
+        if self.fail_mode == "403-mount-in-use":
+            client.sendall(b"HTTP/1.1 403 Mountpoint in use\r\n\r\n")
+            print(f"{RED}  → 403 Mountpoint in use{RESET}")
+            client.close()
+            return
+        if self.fail_mode == "500":
+            client.sendall(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
+            print(f"{RED}  → 500 Internal Server Error{RESET}")
+            client.close()
+            return
+        if self.fail_mode == "digest-challenge":
+            if self._handle_digest_challenge(client, headers, reject_always=False):
+                return
+        if self.fail_mode == "digest-always-reject":
+            if self._handle_digest_challenge(client, headers, reject_always=True):
+                return
+
+        # --- Icecast PUT ---
+        if method_line.startswith("PUT "):
+            client.sendall(b"HTTP/1.1 200 OK\r\n\r\n")
+            print(f"{GREEN}  → 200 OK (Icecast PUT){RESET}")
+            self.receive_audio(client)
+
+        # --- Icecast SOURCE ---
+        elif method_line.startswith("SOURCE "):
+            client.sendall(b"HTTP/1.0 200 OK\r\n\r\n")
+            print(f"{GREEN}  → 200 OK (Icecast SOURCE){RESET}")
+            self.receive_audio(client)
+
+        else:
+            print(f"{RED}  Unknown HTTP method: {method_line}{RESET}")
+
+    def _handle_shoutcast_v1(self, client, password_line):
+        """Handle a SHOUTcast v1 connection (password → OK2 → headers → audio)."""
+        password_line = password_line.strip()
+        print(f"{DIM}  SHOUTcast password received: {password_line}{RESET}")
+        client.sendall(b"OK2\r\nicy-caps:11\r\n\r\n")
+        print(f"{GREEN}  → OK2 (SHOUTcast){RESET}")
+        # Read headers after auth (terminated by \r\n\r\n)
+        header_data = b""
+        while b"\r\n\r\n" not in header_data:
+            chunk = client.recv(4096)
+            if not chunk:
+                return
+            header_data += chunk
+        sc_headers = header_data.decode("utf-8", errors="replace")
+        print(f"{DIM}  SHOUTcast headers received ({len(sc_headers)} bytes){RESET}")
+        self.receive_audio(client)
 
     def receive_audio(self, client):
         """Receive and count audio data bytes."""
