@@ -97,7 +97,11 @@ struct UDPStatsDSender: StatsDSender {
     private let address: sockaddr_in
 
     init(host: String, port: Int) {
-        socketFD = socket(AF_INET, SOCK_DGRAM, 0)
+        #if canImport(Glibc)
+            socketFD = socket(AF_INET, Int32(SOCK_DGRAM.rawValue), 0)
+        #else
+            socketFD = socket(AF_INET, SOCK_DGRAM, 0)
+        #endif
 
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
