@@ -22,11 +22,11 @@
 class SwiftIcecastKit < Formula
   desc "CLI tool for streaming audio to Icecast and SHOUTcast servers"
   homepage "https://github.com/atelier-socle/swift-icecast-kit"
-  url "https://github.com/atelier-socle/swift-icecast-kit/archive/refs/tags/0.1.0.tar.gz"
+  url "https://github.com/atelier-socle/swift-icecast-kit/archive/refs/tags/0.2.0.tar.gz"
   sha256 "UPDATE_SHA256_AFTER_RELEASE"
   license "Apache-2.0"
 
-  depends_on xcode: ["26.0", :build]
+  depends_on xcode: ["26.2", :build]
 
   def install
     system "swift", "build", "-c", "release", "--disable-sandbox"
@@ -34,6 +34,19 @@ class SwiftIcecastKit < Formula
   end
 
   test do
-    system "#{bin}/icecast-cli", "--help"
+    # Version check
+    assert_match "icecast-cli", shell_output("#{bin}/icecast-cli --help")
+
+    # Subcommands present
+    help_output = shell_output("#{bin}/icecast-cli --help")
+    assert_match "stream",  help_output
+    assert_match "probe",   help_output
+    assert_match "relay",   help_output
+
+    # Probe --help (validates the subcommand is wired)
+    assert_match "source", shell_output("#{bin}/icecast-cli probe --help")
+
+    # Relay --help
+    assert_match "source", shell_output("#{bin}/icecast-cli relay --help")
   end
 end

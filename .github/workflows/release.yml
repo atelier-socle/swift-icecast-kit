@@ -3,7 +3,7 @@
 
 # release.yml — Build and publish icecast-cli binaries on tag push.
 #
-# Triggers on semver tags WITHOUT "v" prefix (e.g. 0.1.0, 1.2.3).
+# Triggers on semver tags WITHOUT "v" prefix (e.g. 0.2.0, 1.2.3).
 # Builds for macOS (arm64) and Linux (x86_64), then creates a GitHub
 # Release with both archives attached.
 

@@ -77,7 +77,7 @@ struct HTTPRequestBuilderTests {
             contentType: .mp3, stationInfo: station
         )
         let request = String(decoding: data, as: UTF8.self)
-        #expect(request.contains("User-Agent: IcecastKit/0.1.0\r\n"))
+        #expect(request.contains("User-Agent: IcecastKit/0.2.0\r\n"))
     }
 
     @Test("PUT request includes Expect 100-continue")

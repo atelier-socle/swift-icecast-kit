@@ -10,7 +10,7 @@ import Foundation
 public struct HTTPRequestBuilder: Sendable {
 
     /// The User-Agent string sent with all requests.
-    static let userAgent = "IcecastKit/0.1.0"
+    static let userAgent = "IcecastKit/0.2.0"
 
     /// Creates a new HTTP request builder.
     public init() {}

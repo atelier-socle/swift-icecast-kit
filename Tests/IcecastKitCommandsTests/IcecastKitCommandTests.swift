@@ -15,7 +15,7 @@ struct IcecastKitCommandTests {
 
     @Test("Root command has correct version")
     func rootCommandVersion() {
-        #expect(IcecastKitCommand.configuration.version == "0.1.0")
+        #expect(IcecastKitCommand.configuration.version == "0.2.0")
     }
 
     @Test("Root command has five subcommands")
