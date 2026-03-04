@@ -275,4 +275,213 @@ struct MetadataShowcaseTests {
         #expect(stats.contentType == "audio/mpeg")
         #expect(stats.connectedDuration == 3600)
     }
+
+    // MARK: - Showcase 13: AdminMetadataClient throws on connection failure
+
+    @Test("AdminMetadataClient throws on transport connection failure")
+    func adminClientThrowsOnConnectionFailure() async {
+        let mock = MockTransportConnection()
+        await mock.setConnectError(
+            .connectionFailed(host: "radio.example.com", port: 8000, reason: "refused")
+        )
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        await #expect(throws: IcecastError.self) {
+            let meta = ICYMetadata(streamTitle: "Test")
+            try await client.updateMetadata(meta, mountpoint: "/live.mp3")
+        }
+    }
+
+    // MARK: - Showcase 14: AdminMetadataClient unexpected status code
+
+    @Test("AdminMetadataClient throws on unexpected status code")
+    func adminClientThrowsOnUnexpectedStatus() async {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(
+            Data("HTTP/1.1 500 Internal Server Error\r\n\r\n".utf8)
+        )
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        await #expect(throws: IcecastError.self) {
+            let meta = ICYMetadata(streamTitle: "Test")
+            try await client.updateMetadata(meta, mountpoint: "/live.mp3")
+        }
+    }
+
+    // MARK: - Showcase 15: AdminMetadataClient handles empty response body
+
+    @Test("AdminMetadataClient parses response with no body")
+    func adminClientHandlesEmptyBody() async throws {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Data("HTTP/1.1 200 OK\r\n\r\n".utf8))
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        let meta = ICYMetadata(streamTitle: "Test")
+        try await client.updateMetadata(meta, mountpoint: "/live.mp3")
+    }
+
+    // MARK: - Showcase 16: AdminMetadataClient send error triggers connectionLost
+
+    @Test("AdminMetadataClient throws connectionLost on send failure")
+    func adminClientThrowsOnSendFailure() async {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(Data("HTTP/1.1 200 OK\r\n\r\n".utf8))
+        await mock.setSendError(.connectionLost(reason: "broken pipe"))
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        await #expect(throws: IcecastError.self) {
+            let meta = ICYMetadata(streamTitle: "Test")
+            try await client.updateMetadata(meta, mountpoint: "/live.mp3")
+        }
+    }
+
+    // MARK: - Showcase 17: AdminMetadataClient unexpected status code (e.g. 403)
+
+    @Test("AdminMetadataClient throws unexpectedResponse on 403")
+    func adminClientThrowsOnForbidden() async {
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(
+            Data("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n".utf8)
+        )
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        await #expect(throws: IcecastError.self) {
+            let meta = ICYMetadata(streamTitle: "Test")
+            try await client.updateMetadata(meta, mountpoint: "/live.mp3")
+        }
+    }
+
+    // MARK: - Showcase 18: AdminMetadataClient receive error
+
+    @Test("AdminMetadataClient throws on receive error")
+    func adminClientThrowsOnReceiveError() async {
+        let mock = MockTransportConnection()
+        await mock.setReceiveError(.connectionLost(reason: "timeout"))
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        await #expect(throws: IcecastError.self) {
+            try await client.fetchServerStats()
+        }
+    }
+
+    // MARK: - Showcase 19: ICYMetadataDecoder handles malformed metadata
+
+    @Test("ICYMetadataDecoder handles value without opening quote")
+    func decoderHandlesValueWithoutQuote() throws {
+        let decoder = ICYMetadataDecoder()
+        // Metadata with value not starting with quote — triggers skipToNextPair
+        let malformed = "StreamTitle=NoQuotes;StreamUrl='http://ok';"
+        var data = Data([UInt8(2)])  // length indicator = 2 → 32 bytes
+        var metaData = Data(malformed.utf8)
+        while metaData.count < 32 { metaData.append(0) }
+        data.append(metaData)
+
+        let (decoded, consumed) = try decoder.decode(from: data)
+        #expect(consumed == 33)
+        // The first field is skipped (no quote), the decoder may or may not
+        // parse remaining fields depending on internal state
+        _ = decoded.streamUrl  // exercising the code path is the goal
+    }
+
+    // MARK: - Showcase 20: ICYMetadataDecoder empty metadata block
+
+    @Test("ICYMetadataDecoder decodes empty metadata block (length 0)")
+    func decoderHandlesEmptyBlock() throws {
+        let decoder = ICYMetadataDecoder()
+        let data = Data([0])  // length indicator = 0 → empty metadata
+        let (decoded, consumed) = try decoder.decode(from: data)
+        #expect(consumed == 1)
+        #expect(decoded.isEmpty)
+    }
+
+    // MARK: - Showcase 21: IcecastXMLParser throws on malformed XML
+
+    @Test("IcecastXMLParser throws invalidResponse on malformed XML")
+    func xmlParserThrowsOnMalformedXML() async {
+        let mock = MockTransportConnection()
+        let malformedXML = "This is not valid XML <unclosed"
+        await mock.enqueueResponse(
+            Data(("HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\n\r\n" + malformedXML).utf8)
+        )
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        await #expect(throws: IcecastError.self) {
+            _ = try await client.fetchServerStats()
+        }
+    }
+
+    // MARK: - Showcase 22: IcecastXMLParser handles unknown elements
+
+    @Test("Server stats XML with unknown elements parses without error")
+    func xmlParserHandlesUnknownElements() async throws {
+        let creds = IcecastCredentials(username: "admin", password: "adminpass")
+        let xml = """
+            <?xml version="1.0"?>
+            <icestats>
+                <server_id>Icecast 2.5.0</server_id>
+                <source mount="/live.mp3">
+                    <listeners>10</listeners>
+                    <title>Test</title>
+                    <unknown_field>value</unknown_field>
+                </source>
+            </icestats>
+            """
+        let mock = MockTransportConnection()
+        await mock.enqueueResponse(
+            Data(("HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\n\r\n" + xml).utf8)
+        )
+
+        let client = AdminMetadataClient(
+            host: "radio.example.com", port: 8000, useTLS: false,
+            credentials: creds, connectionFactory: { mock }
+        )
+        let stats = try await client.fetchServerStats()
+        #expect(stats.totalSources == 1)
+    }
+
+    // MARK: - Showcase 23: ICYMetadataDecoder unquoted value without semicolon
+
+    @Test("ICYMetadataDecoder handles unquoted value at end without semicolon")
+    func decoderHandlesUnquotedValueAtEnd() throws {
+        let decoder = ICYMetadataDecoder()
+        // Value without quote and without trailing semicolon — hits skipToNextPair endIndex path
+        let malformed = "StreamTitle=NoQuoteNoSemicolon"
+        var data = Data([UInt8(2)])  // length indicator = 2 → 32 bytes
+        var metaData = Data(malformed.utf8)
+        while metaData.count < 32 { metaData.append(0) }
+        data.append(metaData)
+
+        let (decoded, consumed) = try decoder.decode(from: data)
+        #expect(consumed == 33)
+        // Malformed value is skipped
+        #expect(decoded.streamTitle == nil)
+    }
 }
