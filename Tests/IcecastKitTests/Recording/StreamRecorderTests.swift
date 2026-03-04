@@ -406,28 +406,32 @@ struct StreamRecorderTests {
         }
     }
 
-    @Test("start throws when directory is not writable")
-    func startThrowsWhenNotWritable() async throws {
-        let dir = try makeTempDir()
-        defer {
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o755], ofItemAtPath: dir
+    // Root on Linux CI bypasses POSIX filesystem permissions (CAP_DAC_OVERRIDE),
+    // so chmod 444 has no effect and isWritableFile returns true.
+    #if !os(Linux)
+        @Test("start throws when directory is not writable")
+        func startThrowsWhenNotWritable() async throws {
+            let dir = try makeTempDir()
+            defer {
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o755], ofItemAtPath: dir
+                )
+                cleanup(dir)
+            }
+
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o444], ofItemAtPath: dir
             )
-            cleanup(dir)
-        }
 
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o444], ofItemAtPath: dir
-        )
-
-        let config = RecordingConfiguration(
-            directory: dir, contentType: .mp3
-        )
-        let recorder = StreamRecorder(configuration: config)
-        await #expect(throws: IcecastError.self) {
-            try await recorder.start()
+            let config = RecordingConfiguration(
+                directory: dir, contentType: .mp3
+            )
+            let recorder = StreamRecorder(configuration: config)
+            await #expect(throws: IcecastError.self) {
+                try await recorder.start()
+            }
         }
-    }
+    #endif
 
     @Test("start throws when directory cannot be created")
     func startThrowsWhenCannotCreateDir() async throws {
