@@ -145,7 +145,12 @@ public actor IcecastClient {
         currentState = .authenticating
 
         let negotiator = ProtocolNegotiator(connectionFactory: connectionFactory)
-        let mode = try await negotiateOrFail(negotiator: negotiator, transport: transport)
+        let effectiveAuth = configuration.authentication
+        let mode = try await negotiateOrFail(
+            negotiator: negotiator,
+            transport: transport,
+            authentication: effectiveAuth
+        )
 
         guard currentState == .authenticating else {
             await transport.close()
@@ -301,13 +306,15 @@ public actor IcecastClient {
     /// Negotiates the protocol or transitions to failed state on error.
     private func negotiateOrFail(
         negotiator: ProtocolNegotiator,
-        transport: any TransportConnection
+        transport: any TransportConnection,
+        authentication: IcecastAuthentication? = nil
     ) async throws -> ProtocolMode {
         do {
             return try await negotiator.negotiate(
                 connection: transport,
                 configuration: configuration,
-                credentials: credentials
+                credentials: credentials,
+                authentication: authentication
             )
         } catch {
             await transport.close()
@@ -447,7 +454,8 @@ public actor IcecastClient {
     /// Returns whether the given error is non-recoverable (skip reconnection).
     private func isNonRecoverableError(_ error: IcecastError) -> Bool {
         switch error {
-        case .authenticationFailed, .mountpointInUse, .contentTypeNotSupported, .credentialsRequired:
+        case .authenticationFailed, .mountpointInUse, .contentTypeNotSupported,
+            .credentialsRequired, .digestAuthFailed, .tokenExpired, .tokenInvalid:
             return true
         default:
             return false
@@ -457,7 +465,7 @@ public actor IcecastClient {
     /// Maps an ``IcecastError`` to a ``DisconnectReason``.
     private func disconnectReason(for error: IcecastError) -> DisconnectReason {
         switch error {
-        case .authenticationFailed:
+        case .authenticationFailed, .digestAuthFailed, .tokenExpired, .tokenInvalid:
             return .authenticationFailed
         case .mountpointInUse:
             return .mountpointInUse

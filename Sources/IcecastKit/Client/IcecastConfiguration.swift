@@ -195,6 +195,14 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     /// after each successful ``IcecastClient/send(_:)`` call.
     public var recording: RecordingConfiguration?
 
+    /// Advanced authentication method for this connection.
+    ///
+    /// When set, overrides the `credentials` parameter passed to
+    /// ``IcecastClient/init(configuration:credentials:reconnectPolicy:)``.
+    /// Supports Bearer tokens, Digest auth, query tokens, and more.
+    /// Set to `nil` to use traditional ``IcecastCredentials`` (default).
+    public var authentication: IcecastAuthentication?
+
     /// Creates a new Icecast configuration.
     ///
     /// - Parameters:
@@ -211,6 +219,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
     ///   - credentials: Authentication credentials. Defaults to `nil`.
     ///   - reconnectPolicy: Reconnection policy. Defaults to `.default`.
     ///   - recording: Recording configuration. Defaults to `nil` (disabled).
+    ///   - authentication: Advanced authentication method. Defaults to `nil`.
     public init(
         host: String,
         port: Int = 8000,
@@ -224,7 +233,8 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         adaptiveBitrate: AdaptiveBitratePolicy? = nil,
         credentials: IcecastCredentials? = nil,
         reconnectPolicy: ReconnectPolicy = .default,
-        recording: RecordingConfiguration? = nil
+        recording: RecordingConfiguration? = nil,
+        authentication: IcecastAuthentication? = nil
     ) {
         self.host = host
         self.port = port
@@ -239,6 +249,7 @@ public struct IcecastConfiguration: Sendable, Hashable, Codable {
         self.credentials = credentials
         self.reconnectPolicy = reconnectPolicy
         self.recording = recording
+        self.authentication = authentication
     }
 
     /// Creates a configuration and credentials from a URL string.

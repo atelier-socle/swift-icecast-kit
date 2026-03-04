@@ -54,6 +54,44 @@ public struct HTTPRequestBuilder: Sendable {
         return Data(request.utf8)
     }
 
+    /// Builds an Icecast HTTP PUT request with a raw authorization header value.
+    ///
+    /// Used for authentication methods beyond Basic Auth (Bearer, Digest).
+    ///
+    /// - Parameters:
+    ///   - mountpoint: The mount path (e.g., `"/live.mp3"`).
+    ///   - authorizationHeaderValue: The complete `Authorization` header value.
+    ///   - host: The server hostname.
+    ///   - port: The server port.
+    ///   - contentType: The audio content type.
+    ///   - stationInfo: Station metadata for ice-* headers.
+    /// - Returns: The raw HTTP request bytes ready to send.
+    public func buildIcecastPUT(
+        mountpoint: String,
+        authorizationHeaderValue: String,
+        host: String,
+        port: Int,
+        contentType: AudioContentType,
+        stationInfo: StationInfo
+    ) -> Data {
+        var lines: [String] = []
+
+        lines.append("PUT \(mountpoint) HTTP/1.1")
+        lines.append("Host: \(host):\(port)")
+        lines.append("Authorization: \(authorizationHeaderValue)")
+        lines.append("Content-Type: \(contentType.rawValue)")
+        lines.append("User-Agent: \(Self.userAgent)")
+        lines.append("Expect: 100-continue")
+
+        appendIceHeaders(to: &lines, stationInfo: stationInfo)
+
+        lines.append("")
+        lines.append("")
+
+        let request = lines.joined(separator: "\r\n")
+        return Data(request.utf8)
+    }
+
     /// Builds an Icecast SOURCE request (legacy, pre-2.4.0).
     ///
     /// Uses the `SOURCE` method with `ICE/1.0` protocol version.
@@ -75,6 +113,37 @@ public struct HTTPRequestBuilder: Sendable {
 
         lines.append("SOURCE \(mountpoint) ICE/1.0")
         lines.append("Authorization: \(credentials.basicAuthHeaderValue())")
+        lines.append("Content-Type: \(contentType.rawValue)")
+
+        appendIceHeaders(to: &lines, stationInfo: stationInfo)
+
+        lines.append("")
+        lines.append("")
+
+        let request = lines.joined(separator: "\r\n")
+        return Data(request.utf8)
+    }
+
+    /// Builds an Icecast SOURCE request with a raw authorization header value.
+    ///
+    /// Used for authentication methods beyond Basic Auth (Bearer, Digest).
+    ///
+    /// - Parameters:
+    ///   - mountpoint: The mount path (e.g., `"/live.mp3"`).
+    ///   - authorizationHeaderValue: The complete `Authorization` header value.
+    ///   - contentType: The audio content type.
+    ///   - stationInfo: Station metadata for ice-* headers.
+    /// - Returns: The raw HTTP request bytes ready to send.
+    public func buildIcecastSOURCE(
+        mountpoint: String,
+        authorizationHeaderValue: String,
+        contentType: AudioContentType,
+        stationInfo: StationInfo
+    ) -> Data {
+        var lines: [String] = []
+
+        lines.append("SOURCE \(mountpoint) ICE/1.0")
+        lines.append("Authorization: \(authorizationHeaderValue)")
         lines.append("Content-Type: \(contentType.rawValue)")
 
         appendIceHeaders(to: &lines, stationInfo: stationInfo)

@@ -34,6 +34,15 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
     /// No credentials were provided but the server requires them.
     case credentialsRequired
 
+    /// Digest authentication challenge/response failed.
+    case digestAuthFailed(reason: String)
+
+    /// Bearer token was rejected by the server (HTTP 401).
+    case tokenExpired
+
+    /// Bearer token was rejected by the server (HTTP 403).
+    case tokenInvalid
+
     // MARK: - Protocol
 
     /// All attempted protocol variants failed negotiation.
@@ -169,6 +178,12 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
             return "Authentication failed (HTTP \(statusCode)): \(message)"
         case .credentialsRequired:
             return "Credentials are required but were not provided"
+        case .digestAuthFailed(let reason):
+            return "Digest authentication failed: \(reason)"
+        case .tokenExpired:
+            return "Bearer token expired or rejected (HTTP 401)"
+        case .tokenInvalid:
+            return "Bearer token invalid or forbidden (HTTP 403)"
 
         // Protocol
         case .protocolNegotiationFailed(let tried):

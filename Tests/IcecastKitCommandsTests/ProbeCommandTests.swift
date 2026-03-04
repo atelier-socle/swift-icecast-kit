@@ -24,7 +24,7 @@ struct ProbeCommandTests {
 
     @Test("probe parses default options correctly")
     func probeDefaults() throws {
-        var command = try ProbeCommand.parse([
+        let command = try ProbeCommand.parse([
             "--password", "secret"
         ])
         #expect(command.host == "localhost")
@@ -32,7 +32,6 @@ struct ProbeCommandTests {
         #expect(command.mountpoint == "/probe")
         #expect(command.duration == 5.0)
         #expect(command.contentType == "mp3")
-        _ = command
     }
 
     @Test("probe parses custom options")

@@ -51,6 +51,33 @@ public actor ProtocolNegotiator {
         configuration: IcecastConfiguration,
         credentials: IcecastCredentials
     ) async throws -> ProtocolMode {
+        try await negotiate(
+            connection: connection,
+            configuration: configuration,
+            credentials: credentials,
+            authentication: nil
+        )
+    }
+
+    /// Negotiates the connection protocol with advanced authentication.
+    ///
+    /// When `authentication` is non-nil, uses the advanced auth flow
+    /// (Bearer, Digest, QueryToken). Otherwise falls back to the
+    /// standard ``IcecastCredentials``-based flow.
+    ///
+    /// - Parameters:
+    ///   - connection: The transport connection to use.
+    ///   - configuration: The Icecast configuration.
+    ///   - credentials: The authentication credentials (fallback).
+    ///   - authentication: Advanced authentication method, or `nil`.
+    /// - Returns: The protocol mode that was successfully negotiated.
+    /// - Throws: ``IcecastError`` on negotiation failure.
+    public func negotiate(
+        connection: any TransportConnection,
+        configuration: IcecastConfiguration,
+        credentials: IcecastCredentials,
+        authentication: IcecastAuthentication?
+    ) async throws -> ProtocolMode {
         fallbackConnection = nil
 
         switch configuration.protocolMode {
@@ -58,34 +85,53 @@ public actor ProtocolNegotiator {
             return try await negotiateAuto(
                 connection: connection,
                 configuration: configuration,
-                credentials: credentials
+                credentials: credentials,
+                authentication: authentication
             )
         case .icecastPUT:
-            try await icecastProtocol.performPUTHandshake(
-                connection: connection,
-                configuration: configuration,
-                credentials: credentials
-            )
+            if let auth = authentication {
+                try await icecastProtocol.performPUTHandshake(
+                    connection: connection,
+                    configuration: configuration,
+                    authentication: auth
+                )
+            } else {
+                try await icecastProtocol.performPUTHandshake(
+                    connection: connection,
+                    configuration: configuration,
+                    credentials: credentials
+                )
+            }
             return .icecastPUT
         case .icecastSOURCE:
-            try await icecastProtocol.performSOURCEHandshake(
-                connection: connection,
-                configuration: configuration,
-                credentials: credentials
-            )
+            if let auth = authentication {
+                try await icecastProtocol.performSOURCEHandshake(
+                    connection: connection,
+                    configuration: configuration,
+                    authentication: auth
+                )
+            } else {
+                try await icecastProtocol.performSOURCEHandshake(
+                    connection: connection,
+                    configuration: configuration,
+                    credentials: credentials
+                )
+            }
             return .icecastSOURCE
         case .shoutcastV1:
+            let effectiveCredentials = authentication?.credentials ?? credentials
             _ = try await shoutcastProtocol.performV1Handshake(
                 connection: connection,
-                credentials: credentials,
+                credentials: effectiveCredentials,
                 contentType: configuration.contentType,
                 stationInfo: configuration.stationInfo
             )
             return .shoutcastV1
         case .shoutcastV2(let streamId):
+            let effectiveCredentials = authentication?.credentials ?? credentials
             _ = try await shoutcastProtocol.performV2Handshake(
                 connection: connection,
-                credentials: credentials,
+                credentials: effectiveCredentials,
                 streamId: streamId,
                 contentType: configuration.contentType,
                 stationInfo: configuration.stationInfo
@@ -100,20 +146,30 @@ public actor ProtocolNegotiator {
     private func negotiateAuto(
         connection: any TransportConnection,
         configuration: IcecastConfiguration,
-        credentials: IcecastCredentials
+        credentials: IcecastCredentials,
+        authentication: IcecastAuthentication? = nil
     ) async throws -> ProtocolMode {
         do {
-            try await icecastProtocol.performPUTHandshake(
-                connection: connection,
-                configuration: configuration,
-                credentials: credentials
-            )
+            if let auth = authentication {
+                try await icecastProtocol.performPUTHandshake(
+                    connection: connection,
+                    configuration: configuration,
+                    authentication: auth
+                )
+            } else {
+                try await icecastProtocol.performPUTHandshake(
+                    connection: connection,
+                    configuration: configuration,
+                    credentials: credentials
+                )
+            }
             return .icecastPUT
         } catch IcecastError.emptyResponse {
             return try await fallbackToSOURCE(
                 originalConnection: connection,
                 configuration: configuration,
-                credentials: credentials
+                credentials: credentials,
+                authentication: authentication
             )
         }
     }
@@ -122,7 +178,8 @@ public actor ProtocolNegotiator {
     private func fallbackToSOURCE(
         originalConnection: any TransportConnection,
         configuration: IcecastConfiguration,
-        credentials: IcecastCredentials
+        credentials: IcecastCredentials,
+        authentication: IcecastAuthentication? = nil
     ) async throws -> ProtocolMode {
         await originalConnection.close()
 
@@ -134,11 +191,19 @@ public actor ProtocolNegotiator {
         )
 
         do {
-            try await icecastProtocol.performSOURCEHandshake(
-                connection: newConnection,
-                configuration: configuration,
-                credentials: credentials
-            )
+            if let auth = authentication {
+                try await icecastProtocol.performSOURCEHandshake(
+                    connection: newConnection,
+                    configuration: configuration,
+                    authentication: auth
+                )
+            } else {
+                try await icecastProtocol.performSOURCEHandshake(
+                    connection: newConnection,
+                    configuration: configuration,
+                    credentials: credentials
+                )
+            }
             fallbackConnection = newConnection
             return .icecastSOURCE
         } catch {

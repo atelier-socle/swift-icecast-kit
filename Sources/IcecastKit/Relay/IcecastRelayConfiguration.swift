@@ -32,6 +32,13 @@ public struct IcecastRelayConfiguration: Sendable {
     /// Connection timeout in seconds. Default: `10.0`.
     public var connectionTimeout: TimeInterval
 
+    /// Advanced authentication method for the source stream.
+    ///
+    /// When set, overrides `credentials` for the relay connection.
+    /// Supports Bearer tokens, Digest auth, query tokens, and more.
+    /// Set to `nil` to use traditional ``IcecastCredentials`` (default).
+    public var authentication: IcecastAuthentication?
+
     /// Creates a relay configuration.
     ///
     /// - Parameters:
@@ -42,6 +49,7 @@ public struct IcecastRelayConfiguration: Sendable {
     ///   - userAgent: User-Agent header. Default: `"IcecastKit/0.2.0"`.
     ///   - reconnectPolicy: Auto-reconnect policy. Default: `nil`.
     ///   - connectionTimeout: Connection timeout in seconds. Default: `10.0`.
+    ///   - authentication: Advanced authentication method. Default: `nil`.
     public init(
         sourceURL: String,
         credentials: IcecastCredentials? = nil,
@@ -49,7 +57,8 @@ public struct IcecastRelayConfiguration: Sendable {
         bufferSize: Int = 65536,
         userAgent: String = "IcecastKit/0.2.0",
         reconnectPolicy: ReconnectPolicy? = nil,
-        connectionTimeout: TimeInterval = 10.0
+        connectionTimeout: TimeInterval = 10.0,
+        authentication: IcecastAuthentication? = nil
     ) {
         self.sourceURL = sourceURL
         self.credentials = credentials
@@ -58,5 +67,6 @@ public struct IcecastRelayConfiguration: Sendable {
         self.userAgent = userAgent
         self.reconnectPolicy = reconnectPolicy
         self.connectionTimeout = connectionTimeout
+        self.authentication = authentication
     }
 }
