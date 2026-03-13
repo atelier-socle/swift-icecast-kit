@@ -16,7 +16,7 @@
     /// on platforms where Network.framework is not available.
     /// Thread safety is guaranteed by the actor isolation.
     ///
-    /// > Note: TLS is not supported on Linux in version 0.2.0.
+    /// > Note: TLS is not supported on Linux in version 0.3.0.
     /// > Secure connections require Apple platforms with Network.framework.
     public actor POSIXTransportConnection: TransportConnection {
 
@@ -39,7 +39,7 @@
             }
 
             if useTLS {
-                throw IcecastError.tlsError(reason: "TLS is not supported on Linux in version 0.2.0")
+                throw IcecastError.tlsError(reason: "TLS is not supported on Linux in version 0.3.0")
             }
 
             var hints = addrinfo()

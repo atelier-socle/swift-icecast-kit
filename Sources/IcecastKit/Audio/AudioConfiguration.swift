@@ -3,7 +3,7 @@
 
 /// Configuration for raw AAC audio that needs ADTS wrapping.
 ///
-/// Used with ``IcecastClient/send(rawAAC:)`` to automatically wrap
+/// Used with ``IcecastClient/send(rawAAC:audioConfiguration:)`` to automatically wrap
 /// raw AAC access units in ADTS frames (ISO 13818-7) before sending.
 ///
 /// ```swift

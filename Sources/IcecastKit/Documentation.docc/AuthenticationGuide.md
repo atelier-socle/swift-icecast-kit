@@ -8,7 +8,7 @@ Configure authentication beyond HTTP Basic: Digest, Bearer, Query Token, and URL
 
 ## Overview
 
-IcecastKit 0.2.0 adds ``IcecastAuthentication`` — a unified enum for all authentication methods. The existing ``IcecastCredentials``-based flow continues to work unchanged, while the new authentication system adds Digest (RFC 7616), Bearer token, query token, and SHOUTcast-specific variants.
+IcecastKit 0.3.0 adds ``IcecastAuthentication`` — a unified enum for all authentication methods. The existing ``IcecastCredentials``-based flow continues to work unchanged, while the new authentication system adds Digest (RFC 7616), Bearer token, query token, and SHOUTcast-specific variants.
 
 ### Authentication Types
 

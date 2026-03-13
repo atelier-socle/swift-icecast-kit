@@ -136,6 +136,11 @@ await client.disconnect()
 - ``StationInfo``
 - ``ProtocolMode``
 
+### Audio
+
+- ``AudioConfiguration``
+- ``AACProfile``
+
 ### Metadata
 
 - ``ICYMetadata``

@@ -22,7 +22,7 @@
 class SwiftIcecastKit < Formula
   desc "CLI tool for streaming audio to Icecast and SHOUTcast servers"
   homepage "https://github.com/atelier-socle/swift-icecast-kit"
-  url "https://github.com/atelier-socle/swift-icecast-kit/archive/refs/tags/0.2.0.tar.gz"
+  url "https://github.com/atelier-socle/swift-icecast-kit/archive/refs/tags/0.3.0.tar.gz"
   sha256 "UPDATE_SHA256_AFTER_RELEASE"
   license "Apache-2.0"
 

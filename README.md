@@ -13,7 +13,7 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 
 ---
 
-## What's New in 0.2.0
+## What's New in 0.3.0
 
 - **Adaptive Bitrate** — EWMA-based congestion detection with configurable policies (conservative, responsive, aggressive, custom)
 - **Multi-Destination** — Stream to multiple servers simultaneously with failure isolation
@@ -24,6 +24,7 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 - **Advanced Authentication** — Digest (RFC 7616), Bearer token, query token, and URL-embedded credentials
 - **Server Presets** — One-line configuration for AzuraCast, LibreTime, Radio.co, Centova Cast, SHOUTcast DNAS, Icecast Official, and Broadcastify
 - **Metrics Export** — Prometheus (OpenMetrics) and StatsD exporters with automatic per-destination labels
+- **ADTS Wrapping** — Send raw AAC access units with automatic ISO 13818-7 ADTS framing via `send(rawAAC:audioConfiguration:)`
 
 ---
 
@@ -45,6 +46,7 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 - **Advanced auth** — `IcecastAuthentication` enum with Digest (RFC 7616, MD5/SHA-256), Bearer token, query token, SHOUTcast v1/v2, URL-embedded credentials parsing, and credential stripping
 - **Server presets** — `IcecastServerPreset` with 7 one-line configurations (AzuraCast, LibreTime, Radio.co, Centova Cast, SHOUTcast DNAS, Icecast Official, Broadcastify)
 - **Metrics export** — `IcecastMetricsExporter` protocol with `PrometheusExporter` (OpenMetrics, 8 metrics, `onRender` callback) and `StatsDExporter` (UDP POSIX), automatic labels, periodic export
+- **ADTS wrapping** — `send(rawAAC:audioConfiguration:)` wraps raw AAC access units in 7-byte ADTS headers (ISO 13818-7) with configurable profile, sample rate, and channel count
 - **CLI tool** — `icecast-cli` for streaming, bandwidth probing, relaying, connection testing, and server diagnostics with colored terminal output and structured exit codes
 - **Swift 6.2 strict concurrency** — Actors for stateful types, `Sendable` everywhere, `async`/`await` throughout, zero `@unchecked Sendable` or `nonisolated(unsafe)`
 - **Zero core dependencies** — The `IcecastKit` target has no third-party dependencies. Only `swift-argument-parser` for the CLI and `swift-crypto` conditionally on Linux
@@ -60,6 +62,7 @@ Pure Swift client library for streaming audio to Icecast and SHOUTcast servers. 
 | SHOUTcast DNAS | 2.6.1 | [SHOUTcast Docs](https://cast.readme.io/docs) |
 | HTTP Basic Auth | RFC 7617 | [RFC 7617](https://datatracker.ietf.org/doc/html/rfc7617) |
 | HTTP Digest Auth | RFC 7616 | [RFC 7616](https://datatracker.ietf.org/doc/html/rfc7616) |
+| ADTS (AAC Transport) | ISO 13818-7 | [ISO 13818-7](https://www.iso.org/standard/43345.html) |
 
 ---
 
@@ -91,7 +94,7 @@ Add the dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/atelier-socle/swift-icecast-kit.git", from: "0.2.0")
+    .package(url: "https://github.com/atelier-socle/swift-icecast-kit.git", from: "0.3.0")
 ]
 ```
 
@@ -177,6 +180,33 @@ let stats = await client.statistics
 // Graceful disconnect — closes TCP connection, emits .disconnected event
 await client.disconnect()
 ```
+
+### Sending Raw AAC with ADTS Wrapping
+
+If your audio pipeline produces raw AAC access units (e.g., from `AVAudioEngine` or `AudioToolbox`), use `send(rawAAC:audioConfiguration:)` to let IcecastKit wrap each frame with a 7-byte ADTS header (ISO 13818-7) before sending:
+
+```swift
+import IcecastKit
+
+let client = IcecastClient(
+    configuration: IcecastConfiguration(host: "radio.example.com", mountpoint: "/live.aac", contentType: .aac),
+    credentials: IcecastCredentials(password: "hackme")
+)
+
+try await client.connect()
+
+// Describe the audio format
+let audioConfig = AudioConfiguration(sampleRate: 44100, channelCount: 2)
+
+// Each call wraps raw AAC in an ADTS frame and sends it
+for rawFrame in rawAACFrames {
+    try await client.send(rawAAC: rawFrame, audioConfiguration: audioConfig)
+}
+
+await client.disconnect()
+```
+
+If your data already has ADTS headers (e.g., read from an `.aac` file), use the regular `send(_:)` method.
 
 ### URL-Based Configuration
 
@@ -754,6 +784,7 @@ See the [CLI Reference](https://atelier-socle.github.io/swift-icecast-kit/docume
 ```
 Sources/
 ├── IcecastKit/                  # Core library (zero dependencies)
+│   ├── Audio/                   # ADTS frame builder, audio configuration, AAC profiles
 │   ├── Client/                  # IcecastClient, configuration, credentials, state, reconnect
 │   ├── Protocol/                # Protocol negotiation, HTTP request/response, Icecast/SHOUTcast
 │   ├── Metadata/                # ICY metadata encode/decode, interleaver, admin API, stats

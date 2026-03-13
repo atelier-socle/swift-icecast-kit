@@ -34,7 +34,7 @@ print("Server: \(await relay.serverVersion ?? "unknown")")
 | `credentials` | ``IcecastCredentials``? | `nil` | Authentication credentials |
 | `requestICYMetadata` | `Bool` | `true` | Request inline ICY metadata |
 | `bufferSize` | `Int` | 65536 | Receive buffer size |
-| `userAgent` | `String` | `"IcecastKit/0.2.0"` | User-Agent header |
+| `userAgent` | `String` | `"IcecastKit/0.3.0"` | User-Agent header |
 | `reconnectPolicy` | ``ReconnectPolicy``? | `nil` | Auto-reconnect policy |
 | `connectionTimeout` | `TimeInterval` | 10.0 | Connection timeout |
 | `authentication` | ``IcecastAuthentication``? | `nil` | Advanced authentication |

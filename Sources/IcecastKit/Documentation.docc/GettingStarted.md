@@ -12,7 +12,7 @@ Add IcecastKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/atelier-socle/swift-icecast-kit.git", from: "0.2.0")
+    .package(url: "https://github.com/atelier-socle/swift-icecast-kit.git", from: "0.3.0")
 ]
 ```
 
@@ -103,9 +103,9 @@ Supported formats:
 | `.ogg`, `.oga` | `application/ogg` |
 | `.opus` | `audio/ogg` |
 
-### What's New in 0.2.0
+### What's New in 0.3.0
 
-IcecastKit 0.2.0 adds nine major features:
+IcecastKit 0.3.0 adds ten major features:
 
 - **Adaptive Bitrate** — Automatic bitrate adjustment based on network conditions (<doc:AdaptiveBitrateGuide>)
 - **Multi-Destination** — Stream to multiple servers simultaneously (<doc:MultiDestinationGuide>)

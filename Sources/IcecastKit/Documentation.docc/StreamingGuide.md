@@ -133,6 +133,21 @@ for _ in 0..<chunkCount {
 }
 ```
 
+### Sending Raw AAC with ADTS Wrapping
+
+If your audio pipeline produces raw AAC access units (without ADTS headers), use ``IcecastClient/send(rawAAC:audioConfiguration:)`` to let IcecastKit wrap each frame automatically per ISO 13818-7:
+
+```swift
+let audioConfig = AudioConfiguration(sampleRate: 44100, channelCount: 2)
+
+// Each call wraps the raw AAC data in a 7-byte ADTS header before sending
+try await client.send(rawAAC: rawAACFrame, audioConfiguration: audioConfig)
+```
+
+The ``AudioConfiguration`` struct describes the audio format (sample rate, channel count, AAC profile). The ``AACProfile`` enum supports `.main`, `.lc` (default), `.ssr`, and `.ltp`.
+
+If your data already has ADTS headers (e.g., from an AAC file), use the regular ``IcecastClient/send(_:)`` method instead.
+
 ### Disconnection
 
 ``IcecastClient/disconnect()`` gracefully closes the connection. It is safe to call in any state (idempotent):

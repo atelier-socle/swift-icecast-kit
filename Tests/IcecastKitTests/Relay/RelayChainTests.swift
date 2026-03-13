@@ -127,7 +127,7 @@ struct IcecastRelayConfigurationTests {
         #expect(config.credentials == nil)
         #expect(config.requestICYMetadata)
         #expect(config.bufferSize == 65536)
-        #expect(config.userAgent == "IcecastKit/0.2.0")
+        #expect(config.userAgent == "IcecastKit/0.3.0")
         #expect(config.reconnectPolicy == nil)
         #expect(config.connectionTimeout == 10.0)
     }

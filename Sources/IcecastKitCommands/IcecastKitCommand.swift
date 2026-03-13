@@ -12,7 +12,7 @@ public struct IcecastKitCommand: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "icecast-cli",
         abstract: "Stream audio to Icecast and SHOUTcast servers",
-        version: "0.2.0",
+        version: "0.3.0",
         subcommands: [
             StreamCommand.self,
             TestConnectionCommand.self,

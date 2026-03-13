@@ -191,7 +191,7 @@ struct MetadataShowcaseTests {
         #expect(requestString.contains("Authorization: \(expectedAuth)"))
 
         // Verify User-Agent header
-        #expect(requestString.contains("User-Agent: IcecastKit/0.2.0"))
+        #expect(requestString.contains("User-Agent: IcecastKit/0.3.0"))
     }
 
     // MARK: - Test 9a: Server Stats Query

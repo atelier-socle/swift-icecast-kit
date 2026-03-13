@@ -46,7 +46,7 @@ public struct IcecastRelayConfiguration: Sendable {
     ///   - credentials: Authentication credentials, or `nil` for public streams.
     ///   - requestICYMetadata: Whether to request ICY metadata. Default: `true`.
     ///   - bufferSize: Receive buffer size in bytes. Default: `65536`.
-    ///   - userAgent: User-Agent header. Default: `"IcecastKit/0.2.0"`.
+    ///   - userAgent: User-Agent header. Default: `"IcecastKit/0.3.0"`.
     ///   - reconnectPolicy: Auto-reconnect policy. Default: `nil`.
     ///   - connectionTimeout: Connection timeout in seconds. Default: `10.0`.
     ///   - authentication: Advanced authentication method. Default: `nil`.
@@ -55,7 +55,7 @@ public struct IcecastRelayConfiguration: Sendable {
         credentials: IcecastCredentials? = nil,
         requestICYMetadata: Bool = true,
         bufferSize: Int = 65536,
-        userAgent: String = "IcecastKit/0.2.0",
+        userAgent: String = "IcecastKit/0.3.0",
         reconnectPolicy: ReconnectPolicy? = nil,
         connectionTimeout: TimeInterval = 10.0,
         authentication: IcecastAuthentication? = nil
