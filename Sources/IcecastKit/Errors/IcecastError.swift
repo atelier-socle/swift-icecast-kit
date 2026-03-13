@@ -157,6 +157,9 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
     /// The provided audio data is invalid or corrupt.
     case invalidAudioData(reason: String)
 
+    /// The audio configuration is invalid for ADTS wrapping.
+    case invalidAudioConfiguration(reason: String)
+
     // MARK: - CustomStringConvertible
 
     public var description: String {
@@ -266,6 +269,8 @@ public enum IcecastError: Error, Sendable, Hashable, CustomStringConvertible {
             return "Send failed: \(reason)"
         case .invalidAudioData(let reason):
             return "Invalid audio data: \(reason)"
+        case .invalidAudioConfiguration(let reason):
+            return "Invalid audio configuration: \(reason)"
         }
     }
 }

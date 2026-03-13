@@ -226,6 +226,24 @@ public actor IcecastClient {
         await writeToRecorder(data)
     }
 
+    /// Sends raw AAC data wrapped in an ADTS frame.
+    ///
+    /// Automatically wraps the raw AAC access unit with a 7-byte ADTS header
+    /// (ISO 13818-7) before sending. The caller provides raw encoder output;
+    /// the library handles framing.
+    ///
+    /// - Parameters:
+    ///   - rawAAC: Raw AAC access unit (without ADTS header).
+    ///   - audioConfiguration: Audio parameters for ADTS header generation.
+    /// - Throws: ``IcecastError/invalidAudioConfiguration(reason:)`` if the
+    ///   configuration is invalid, ``IcecastError/invalidAudioData(reason:)``
+    ///   if the data is empty or too large.
+    public func send(rawAAC: Data, audioConfiguration: AudioConfiguration) async throws {
+        let builder = try ADTSFrameBuilder(configuration: audioConfiguration)
+        let adtsFrame = try builder.wrap(rawAAC)
+        try await send(adtsFrame)
+    }
+
     /// Updates stream metadata.
     ///
     /// If admin credentials are configured, uses the admin API (preferred).
