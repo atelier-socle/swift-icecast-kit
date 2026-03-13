@@ -23,7 +23,7 @@ public actor IcecastClient {
 
     // MARK: - Properties
 
-    private var configuration: IcecastConfiguration
+    private(set) var configuration: IcecastConfiguration
     private var credentials: IcecastCredentials
     private var reconnectPolicy: ReconnectPolicy
     private var currentState: ConnectionState = .disconnected
@@ -34,11 +34,12 @@ public actor IcecastClient {
     private var pendingMetadata: ICYMetadata?
     private var networkConditionMonitor: NetworkConditionMonitor?
     private var abrRelayTask: Task<Void, Never>?
-    private var recorder: StreamRecorder?
+    var recorder: StreamRecorder?
     private var metricsExporter: (any IcecastMetricsExporter)?
     private var metricsInterval: TimeInterval = 10.0
     private var metricsLabels: [String: String] = [:]
     private var metricsTask: Task<Void, Never>?
+
 
     /// The connection monitor for advanced statistics access.
     public let monitor: ConnectionMonitor
@@ -187,8 +188,8 @@ public actor IcecastClient {
     /// Sends audio data to the server.
     ///
     /// On first call, transitions state from `.connected` to `.streaming`.
-    /// If connection is lost during send and reconnection is enabled,
-    /// enters the reconnection loop.
+    /// Data is written directly to the transport. The caller is responsible
+    /// for real-time pacing (like libshout's `shout_sync()` model).
     ///
     /// - Parameter data: The audio data to send.
     /// - Throws: ``IcecastError/notConnected`` if not in a sendable state.
@@ -204,22 +205,25 @@ public actor IcecastClient {
             currentState = .streaming
         }
 
+        // Send immediately like libshout — no buffering, caller paces.
         let startTime = Date()
         do {
             try await transport.send(data)
-            let writeDuration = Date().timeIntervalSince(startTime)
-            await monitor.recordBytesSent(data.count)
-            await monitor.recordSendLatency(writeDuration * 1000.0)
-            await networkConditionMonitor?.recordWrite(
-                duration: writeDuration, bytesWritten: data.count
-            )
-            await writeToRecorder(data)
         } catch {
             await monitor.recordSendError()
             await networkConditionMonitor?.recordWriteFailure()
             await handleConnectionLoss(error: error)
             throw mapToIcecastError(error)
         }
+
+        // Record metrics off the critical send path
+        let writeDuration = Date().timeIntervalSince(startTime)
+        await monitor.recordBytesSent(data.count)
+        await monitor.recordSendLatency(writeDuration * 1000.0)
+        await networkConditionMonitor?.recordWrite(
+            duration: writeDuration, bytesWritten: data.count
+        )
+        await writeToRecorder(data)
     }
 
     /// Updates stream metadata.
@@ -456,7 +460,7 @@ public actor IcecastClient {
     }
 
     /// Maps a generic error to an ``IcecastError``.
-    private func mapToIcecastError(_ error: Error) -> IcecastError {
+    func mapToIcecastError(_ error: Error) -> IcecastError {
         if let icecastError = error as? IcecastError {
             return icecastError
         }
@@ -499,10 +503,14 @@ public actor IcecastClient {
         }
     }
 
-    // MARK: - Adaptive Bitrate
+}
+
+// MARK: - Adaptive Bitrate
+
+extension IcecastClient {
 
     /// Starts the ABR monitor and relay task if configured.
-    private func startABRIfConfigured() {
+    func startABRIfConfigured() {
         guard let policy = configuration.adaptiveBitrate else { return }
 
         let initialBitrate = configuration.stationInfo.bitrate.map { $0 * 1000 } ?? 128_000
@@ -522,125 +530,13 @@ public actor IcecastClient {
     }
 
     /// Stops the ABR monitor and relay task.
-    private func stopABR() {
+    func stopABR() {
         abrRelayTask?.cancel()
         abrRelayTask = nil
         if let abrMonitor = networkConditionMonitor {
             Task { await abrMonitor.stop() }
         }
         networkConditionMonitor = nil
-    }
-
-}
-
-// MARK: - Recording
-
-extension IcecastClient {
-
-    /// Starts recording to the given directory.
-    ///
-    /// Creates a ``StreamRecorder`` with a ``RecordingConfiguration``
-    /// using the client's content type and starts recording immediately.
-    ///
-    /// - Parameters:
-    ///   - directory: Output directory path.
-    ///   - contentType: Audio content type. Defaults to the configuration's content type.
-    /// - Throws: ``IcecastError/recordingFailed(reason:)`` if already recording,
-    ///   or ``IcecastError/recordingDirectoryNotWritable(path:)`` if the directory
-    ///   cannot be created.
-    public func startRecording(
-        directory: String,
-        contentType: AudioContentType? = nil
-    ) async throws {
-        let recordConfig = RecordingConfiguration(
-            directory: directory,
-            contentType: contentType ?? configuration.contentType
-        )
-        let newRecorder = StreamRecorder(configuration: recordConfig)
-        try await newRecorder.start(mountpoint: configuration.mountpoint)
-        recorder = newRecorder
-        if let path = await newRecorder.currentFilePath {
-            await monitor.emit(.recordingStarted(path: path))
-        }
-    }
-
-    /// Stops recording and returns final statistics.
-    ///
-    /// - Returns: Final recording statistics.
-    /// - Throws: ``IcecastError/recordingFailed(reason:)`` if an I/O error occurs.
-    @discardableResult
-    public func stopRecording() async throws -> RecordingStatistics {
-        guard let activeRecorder = recorder else {
-            return RecordingStatistics(
-                duration: 0,
-                bytesWritten: 0,
-                filesCreated: 0,
-                currentFilePath: nil,
-                isRecording: false
-            )
-        }
-        let stats = try await activeRecorder.stop()
-        recorder = nil
-        await monitor.emit(.recordingStopped(statistics: stats))
-        return stats
-    }
-
-    /// Current recording statistics. `nil` if not recording.
-    public var recordingStatistics: RecordingStatistics? {
-        get async {
-            guard let activeRecorder = recorder else { return nil }
-            let stats = await activeRecorder.statistics
-            return stats.isRecording ? stats : nil
-        }
-    }
-
-    /// Starts recording automatically if configuration includes recording settings.
-    func startRecordingIfConfigured() async {
-        guard let recordConfig = configuration.recording else { return }
-        let newRecorder = StreamRecorder(configuration: recordConfig)
-        do {
-            try await newRecorder.start(mountpoint: configuration.mountpoint)
-            recorder = newRecorder
-            if let path = await newRecorder.currentFilePath {
-                await monitor.emit(.recordingStarted(path: path))
-            }
-        } catch {
-            await monitor.emit(
-                .recordingError(mapToIcecastError(error))
-            )
-        }
-    }
-
-    /// Stops the recorder if active, emitting appropriate events.
-    func stopRecorderIfActive() async {
-        guard let activeRecorder = recorder else { return }
-        do {
-            let stats = try await activeRecorder.stop()
-            recorder = nil
-            await monitor.emit(.recordingStopped(statistics: stats))
-        } catch {
-            recorder = nil
-            await monitor.emit(
-                .recordingError(mapToIcecastError(error))
-            )
-        }
-    }
-
-    /// Writes data to the recorder, handling rotation events.
-    func writeToRecorder(_ data: Data) async {
-        guard let activeRecorder = recorder else { return }
-        let pathBefore = await activeRecorder.currentFilePath
-        do {
-            try await activeRecorder.write(data)
-            let pathAfter = await activeRecorder.currentFilePath
-            if let newPath = pathAfter, newPath != pathBefore {
-                await monitor.emit(.recordingFileRotated(newPath: newPath))
-            }
-        } catch {
-            await monitor.emit(
-                .recordingError(mapToIcecastError(error))
-            )
-        }
     }
 }
 

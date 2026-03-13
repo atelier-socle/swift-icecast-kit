@@ -36,12 +36,15 @@
             let nwHost = NWEndpoint.Host(host)
             let nwPort = NWEndpoint.Port(integerLiteral: UInt16(port))
 
+            let tcpOptions = NWProtocolTCP.Options()
+            tcpOptions.noDelay = true
+
             let parameters: NWParameters
             if useTLS {
                 let tlsOptions = NWProtocolTLS.Options()
-                parameters = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
+                parameters = NWParameters(tls: tlsOptions, tcp: tcpOptions)
             } else {
-                parameters = NWParameters.tcp
+                parameters = NWParameters(tls: nil, tcp: tcpOptions)
             }
 
             let nwConnection = NWConnection(host: nwHost, port: nwPort, using: parameters)

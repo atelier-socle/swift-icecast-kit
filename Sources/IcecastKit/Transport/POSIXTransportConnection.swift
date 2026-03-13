@@ -77,6 +77,14 @@
                 #endif
 
                 if connectResult == 0 {
+                    // Disable Nagle's algorithm for real-time audio streaming.
+                    // Without TCP_NODELAY, small AAC frames (200-400 bytes) are
+                    // buffered ~200ms before sending, causing audio crackling.
+                    var flag: Int32 = 1
+                    setsockopt(
+                        fd, Int32(IPPROTO_TCP), TCP_NODELAY, &flag,
+                        socklen_t(MemoryLayout<Int32>.size)
+                    )
                     socketFD = fd
                     connected = true
                     return
